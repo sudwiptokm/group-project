@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Heterogeneous vehicle types for lane-free / weak-lane-discipline traffic.
+    Sublane model must be enabled at run time:  option lateral-resolution 0.5
+
+    PCU (passenger-car-unit) weights used by the RL state are NOT defined here;
+    they live in the observation function (train.py). Keep them in sync:
+        moto = 0.3,  auto = 0.5,  car = 1.0
+
+    Notes:
+      - No native 3-wheeler vClass in SUMO -> 'auto' built on the 'moped' class.
+      - latAlignment="arbitrary" + small minGapLat let 2/3-wheelers filter and
+        weave between larger vehicles instead of queueing single-file.
+-->
+<additional>
+
+    <!-- 2-wheeler: narrow, agile, filters aggressively -->
+    <vType id="moto"
+           vClass="motorcycle"
+           length="2.0"  width="0.8"  height="1.4"
+           minGap="1.0"  minGapLat="0.2"
+           accel="3.5"   decel="6.0"  emergencyDecel="9.0"
+           maxSpeed="22.0"
+           sigma="0.6"
+           latAlignment="arbitrary"
+           maxSpeedLat="1.2"
+           lcSublane="2.0"
+           color="1,0.4,0"/>
+
+    <!-- 3-wheeler auto-rickshaw: built on moped base, wider than moto -->
+    <vType id="auto"
+           vClass="moped"
+           length="2.8"  width="1.3"  height="1.7"
+           minGap="1.2"  minGapLat="0.3"
+           accel="2.0"   decel="5.0"  emergencyDecel="8.0"
+           maxSpeed="14.0"
+           sigma="0.5"
+           latAlignment="arbitrary"
+           maxSpeedLat="0.8"
+           lcSublane="1.2"
+           color="0,0.7,1"/>
+
+    <!-- 4-wheeler car: holds lane centre, the PCU=1.0 reference -->
+    <vType id="car"
+           vClass="passenger"
+           length="4.5"  width="1.8"  height="1.5"
+           minGap="2.0"  minGapLat="0.5"
+           accel="2.6"   decel="4.5"  emergencyDecel="9.0"
+           maxSpeed="25.0"
+           sigma="0.5"
+           latAlignment="center"
+           maxSpeedLat="0.5"
+           lcSublane="1.0"
+           color="0.8,0.8,0.8"/>
+
+</additional>

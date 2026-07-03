@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Baseline config: fixed-time signal (the default program saved with the net).
+    Run GUI to visually confirm heterogeneous lane-free behaviour:
+        sumo-gui -c intersection.sumocfg
+    Headless + collect baseline metrics:
+        sumo -c intersection.sumocfg
+
+    The RL training (train.py) does NOT use this file's <gui>/end settings the
+    same way — sumo-rl builds its own run — but it reuses the same net + route +
+    vtypes + sublane resolution.
+-->
+<configuration>
+
+    <input>
+        <!-- net comes from netedit (Phase 2) — build it first -->
+        <net-file value="intersection.net.xml"/>
+        <route-files value="traffic.rou.xml"/>
+        <additional-files value="vtypes.add.xml"/>
+    </input>
+
+    <time>
+        <begin value="0"/>
+        <end value="3600"/>
+        <step-length value="1.0"/>
+    </time>
+
+    <processing>
+        <!-- sublane model: the knob that enables lane-free weaving/filtering -->
+        <lateral-resolution value="0.5"/>
+        <collision.action value="warn"/>
+        <collision.mingap-factor value="0"/>
+        <time-to-teleport value="-1"/>   <!-- disable teleport so jams stay visible -->
+    </processing>
+
+    <output>
+        <!-- baseline efficiency metrics -->
+        <tripinfo-output value="tripinfo.xml"/>
+    </output>
+
+    <report>
+        <no-step-log value="true"/>
+        <duration-log.statistics value="true"/>
+    </report>
+
+</configuration>

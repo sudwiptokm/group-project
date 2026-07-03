@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    8 edges = in/out per arm. IDs match traffic.rou.xml exactly:
+      *_in  = arm -> centre (approach)
+      *_out = centre -> arm (exit)
+    2 lanes per approach, 50 km/h (13.89 m/s). Wider lanes give the sublane
+    model room for 2/3-wheelers to filter at runtime (lateral-resolution 0.5).
+-->
+<edges>
+    <edge id="N_in"  from="N" to="C" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="N_out" from="C" to="N" numLanes="2" speed="13.89" width="3.5"/>
+
+    <edge id="S_in"  from="S" to="C" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="S_out" from="C" to="S" numLanes="2" speed="13.89" width="3.5"/>
+
+    <edge id="E_in"  from="E" to="C" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="E_out" from="C" to="E" numLanes="2" speed="13.89" width="3.5"/>
+
+    <edge id="W_in"  from="W" to="C" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="W_out" from="C" to="W" numLanes="2" speed="13.89" width="3.5"/>
+</edges>
