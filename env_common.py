@@ -31,6 +31,25 @@ def _vehicle_pcu(type_id: str) -> float:
     return DEFAULT_PCU
 
 
+# ----------------------------------------------------------------------------
+# Safety-aware reward — vulnerability weights (inverse of crash protection)
+# Mirrors the PCU idea: the more exposed the rider, the higher the weight.
+# ----------------------------------------------------------------------------
+VULNERABILITY = {"moto": 1.0, "auto": 0.6, "car": 0.3}
+DEFAULT_VULN = 0.3  # unknown type -> treat as a car (least vulnerable)
+
+B_THRESH = 4.5      # m/s^2 : |deceleration| above this counts as an emergency brake
+SAFETY_SCALE = 1.0  # calibration constant; set in a later task (see spec section 4)
+
+
+def _vehicle_vuln(type_id: str) -> float:
+    # prefix-match so a distribution suffix (e.g. "moto@0") still resolves
+    for name, w in VULNERABILITY.items():
+        if type_id == name or type_id.startswith(name):
+            return w
+    return DEFAULT_VULN
+
+
 class PCUObservationFunction(ObservationFunction):
     """
     Observation per traffic signal:
