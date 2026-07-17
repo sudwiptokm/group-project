@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Mixed, 2-wheeler-heavy demand for the 4-arm intersection.
+
+    !!! EDGE IDS MUST MATCH YOUR netedit OUTPUT !!!
+    This file assumes incoming edges named  N_in S_in E_in W_in
+    and outgoing edges named               N_out S_out E_out W_out
+    (N=north arm, etc.). After you build/save intersection.net.xml, open it and
+    rename edges to match, OR edit the <route> edges below to match netedit's
+    auto-generated ids (often like "-gneE0", "gneE1"). Validate with:
+        sumo -n intersection.net.xml -r traffic.rou.xml  (option: no-step-log)
+
+    vTypes (moto/auto/car) come from vtypes.add.xml — load both files together.
+
+    Demand mix (per the project: 2-wheeler heavy):
+        moto 60% | auto 25% | car 15%
+-->
+<routes>
+
+    <!-- type mix sampled per spawned vehicle; refs vTypes from vtypes.add.xml -->
+    <vTypeDistribution id="mixed" vTypes="moto auto car" probabilities="0.60 0.25 0.15"/>
+
+    <!-- ===== Routes: through + left + right for each approach ===== -->
+    <!-- North approach -->
+    <route id="N_S" edges="N_in S_out"/>   <!-- through -->
+    <route id="N_E" edges="N_in E_out"/>   <!-- turn -->
+    <route id="N_W" edges="N_in W_out"/>   <!-- turn -->
+    <!-- South approach -->
+    <route id="S_N" edges="S_in N_out"/>
+    <route id="S_E" edges="S_in E_out"/>
+    <route id="S_W" edges="S_in W_out"/>
+    <!-- East approach -->
+    <route id="E_W" edges="E_in W_out"/>
+    <route id="E_N" edges="E_in N_out"/>
+    <route id="E_S" edges="E_in S_out"/>
+    <!-- West approach -->
+    <route id="W_E" edges="W_in E_out"/>
+    <route id="W_N" edges="W_in N_out"/>
+    <route id="W_S" edges="W_in S_out"/>
+
+    <!--
+        Flows. Tune vehsPerHour to drive the density sweep for the DQN study:
+        scale all flows up/down (or use the SUMO option "scale") to make the
+        low/medium/high/saturated demand levels. Through movements get the bulk;
+        turns are lighter. begin/end give a 1-hour episode.
+    -->
+
+    <!-- N approach -->
+    <flow id="f_N_S" route="N_S" type="mixed" begin="0" end="3600" vehsPerHour="250" departLat="random" departSpeed="max"/>
+    <flow id="f_N_E" route="N_E" type="mixed" begin="0" end="3600" vehsPerHour="75" departLat="random" departSpeed="max"/>
+    <flow id="f_N_W" route="N_W" type="mixed" begin="0" end="3600" vehsPerHour="75" departLat="random" departSpeed="max"/>
+
+    <!-- S approach -->
+    <flow id="f_S_N" route="S_N" type="mixed" begin="0" end="3600" vehsPerHour="250" departLat="random" departSpeed="max"/>
+    <flow id="f_S_E" route="S_E" type="mixed" begin="0" end="3600" vehsPerHour="75" departLat="random" departSpeed="max"/>
+    <flow id="f_S_W" route="S_W" type="mixed" begin="0" end="3600" vehsPerHour="75" departLat="random" departSpeed="max"/>
+
+    <!-- E approach -->
+    <flow id="f_E_W" route="E_W" type="mixed" begin="0" end="3600" vehsPerHour="200" departLat="random" departSpeed="max"/>
+    <flow id="f_E_N" route="E_N" type="mixed" begin="0" end="3600" vehsPerHour="60" departLat="random" departSpeed="max"/>
+    <flow id="f_E_S" route="E_S" type="mixed" begin="0" end="3600" vehsPerHour="60" departLat="random" departSpeed="max"/>
+
+    <!-- W approach -->
+    <flow id="f_W_E" route="W_E" type="mixed" begin="0" end="3600" vehsPerHour="200" departLat="random" departSpeed="max"/>
+    <flow id="f_W_N" route="W_N" type="mixed" begin="0" end="3600" vehsPerHour="60" departLat="random" departSpeed="max"/>
+    <flow id="f_W_S" route="W_S" type="mixed" begin="0" end="3600" vehsPerHour="60" departLat="random" departSpeed="max"/>
+
+</routes>
