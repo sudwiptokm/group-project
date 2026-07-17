@@ -20,3 +20,82 @@ def test_vehicle_vuln_distribution_suffix():
 
 def test_vehicle_vuln_unknown_defaults_to_car():
     assert ec._vehicle_vuln("bus") == ec.DEFAULT_VULN == 0.3
+
+
+def _fake_ts(*, lane_vehicles, accel, types, is_yellow, internal_lanes, internal_vehicles):
+    """Build a duck-typed traffic-signal stand-in for _safety_penalty.
+
+    lane_vehicles      : {lane_id: [veh_id, ...]}   approach lanes
+    accel              : {veh_id: acceleration}     (negative = braking)
+    types              : {veh_id: type_id}
+    internal_lanes     : [lane_id, ...]             junction internal lanes
+    internal_vehicles  : {lane_id: [veh_id, ...]}
+    """
+    def get_last_step_vehicle_ids(lane):
+        return lane_vehicles.get(lane, internal_vehicles.get(lane, []))
+
+    # getControlledLinks -> [[(in_lane, out_lane, via_lane)], ...]
+    links = [[("in", "out", via)] for via in internal_lanes]
+
+    sumo = SimpleNamespace(
+        lane=SimpleNamespace(getLastStepVehicleIDs=get_last_step_vehicle_ids),
+        vehicle=SimpleNamespace(
+            getAcceleration=lambda v: accel[v],
+            getTypeID=lambda v: types[v],
+        ),
+        trafficlight=SimpleNamespace(getControlledLinks=lambda _id: links),
+    )
+    return SimpleNamespace(sumo=sumo, id="C", lanes=list(lane_vehicles.keys()),
+                           is_yellow=is_yellow)
+
+
+def test_safety_penalty_counts_hard_braking_weighted():
+    # one moto braking hard (accel -5 < -4.5) -> weight 1.0 ; one car cruising -> 0
+    ts = _fake_ts(
+        lane_vehicles={"L1": ["m1", "c1"]},
+        accel={"m1": -5.0, "c1": 0.0},
+        types={"m1": "moto", "c1": "car"},
+        is_yellow=False,
+        internal_lanes=[":C_0"],
+        internal_vehicles={},
+    )
+    assert ec._safety_penalty(ts) == pytest.approx(1.0)
+
+
+def test_safety_penalty_ignores_soft_braking():
+    # accel -3 is above -B_THRESH (-4.5) -> not an emergency brake
+    ts = _fake_ts(
+        lane_vehicles={"L1": ["m1"]},
+        accel={"m1": -3.0},
+        types={"m1": "moto"},
+        is_yellow=False,
+        internal_lanes=[":C_0"],
+        internal_vehicles={},
+    )
+    assert ec._safety_penalty(ts) == pytest.approx(0.0)
+
+
+def test_safety_penalty_exposure_only_when_yellow():
+    # an auto sitting on an internal lane; counts only while is_yellow
+    common = dict(
+        lane_vehicles={"L1": []},
+        accel={},
+        types={"a1": "auto"},
+        internal_lanes=[":C_0"],
+        internal_vehicles={":C_0": ["a1"]},
+    )
+    assert ec._safety_penalty(_fake_ts(is_yellow=False, **common)) == pytest.approx(0.0)
+    assert ec._safety_penalty(_fake_ts(is_yellow=True, **common)) == pytest.approx(0.6)
+
+
+def test_safety_penalty_sums_brake_and_exposure():
+    ts = _fake_ts(
+        lane_vehicles={"L1": ["m1"]},
+        accel={"m1": -6.0},
+        types={"m1": "moto", "a1": "auto"},
+        is_yellow=True,
+        internal_lanes=[":C_0"],
+        internal_vehicles={":C_0": ["a1"]},
+    )
+    # brake: moto 1.0 ; exposure: auto 0.6
+    assert ec._safety_penalty(ts) == pytest.approx(1.6)

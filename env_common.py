@@ -38,7 +38,7 @@ def _vehicle_pcu(type_id: str) -> float:
 VULNERABILITY = {"moto": 1.0, "auto": 0.6, "car": 0.3}
 DEFAULT_VULN = 0.3  # unknown type -> treat as a car (least vulnerable)
 
-B_THRESH = 4.5      # m/s^2 : |deceleration| above this counts as an emergency brake
+B_THRESH = 4.5      # m/s^2 : |deceleration| above this counts as an emergency brake (used in safety reward; see spec section 4)
 SAFETY_SCALE = 1.0  # calibration constant; set in a later task (see spec section 4)
 
 
@@ -48,6 +48,36 @@ def _vehicle_vuln(type_id: str) -> float:
         if type_id == name or type_id.startswith(name):
             return w
     return DEFAULT_VULN
+
+
+def _internal_lanes(ts) -> list:
+    # via (internal junction) lane is the 3rd element of each controlled link
+    links = ts.sumo.trafficlight.getControlledLinks(ts.id)
+    return list({lk[0][2] for lk in links if lk and lk[0][2]})
+
+
+def _safety_penalty(ts) -> float:
+    """Composite, vulnerability-weighted safety penalty for the current step.
+
+    brake_term    : sum of vulnerability over vehicles braking harder than B_THRESH
+    exposure_term : sum of vulnerability over vehicles on internal junction lanes
+                    while the phase is yellow / clearing
+    """
+    sumo = ts.sumo
+
+    brake_term = 0.0
+    for lane in ts.lanes:
+        for vid in sumo.lane.getLastStepVehicleIDs(lane):
+            if sumo.vehicle.getAcceleration(vid) < -B_THRESH:
+                brake_term += _vehicle_vuln(sumo.vehicle.getTypeID(vid))
+
+    exposure_term = 0.0
+    if ts.is_yellow:
+        for lane in _internal_lanes(ts):
+            for vid in sumo.lane.getLastStepVehicleIDs(lane):
+                exposure_term += _vehicle_vuln(sumo.vehicle.getTypeID(vid))
+
+    return brake_term + exposure_term
 
 
 class PCUObservationFunction(ObservationFunction):
