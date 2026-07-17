@@ -17,6 +17,7 @@
     <!-- 2-wheeler: narrow, agile, filters aggressively -->
     <vType id="moto"
            vClass="motorcycle"
+           guiShape="motorcycle"
            length="2.0"  width="0.8"  height="1.4"
            minGap="1.0"  minGapLat="0.2"
            accel="3.5"   decel="6.0"  emergencyDecel="9.0"
@@ -30,6 +31,7 @@
     <!-- 3-wheeler auto-rickshaw: built on moped base, wider than moto -->
     <vType id="auto"
            vClass="moped"
+           guiShape="moped"
            length="2.8"  width="1.3"  height="1.7"
            minGap="1.2"  minGapLat="0.3"
            accel="2.0"   decel="5.0"  emergencyDecel="8.0"
@@ -43,6 +45,7 @@
     <!-- 4-wheeler car: holds lane centre, the PCU=1.0 reference -->
     <vType id="car"
            vClass="passenger"
+           guiShape="passenger/sedan"
            length="4.5"  width="1.8"  height="1.5"
            minGap="2.0"  minGapLat="0.5"
            accel="2.6"   decel="4.5"  emergencyDecel="9.0"
