@@ -51,9 +51,10 @@ def _vehicle_vuln(type_id: str) -> float:
 
 
 def _internal_lanes(ts) -> list:
-    # via (internal junction) lane is the 3rd element of each controlled link
+    # each signal index may control several connections; the via (internal
+    # junction) lane is the 3rd element of each connection tuple
     links = ts.sumo.trafficlight.getControlledLinks(ts.id)
-    return list({lk[0][2] for lk in links if lk and lk[0][2]})
+    return list({conn[2] for lk in links if lk for conn in lk if conn and conn[2]})
 
 
 def _safety_penalty(ts) -> float:

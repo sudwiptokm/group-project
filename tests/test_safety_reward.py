@@ -99,3 +99,13 @@ def test_safety_penalty_sums_brake_and_exposure():
     )
     # brake: moto 1.0 ; exposure: auto 0.6
     assert ec._safety_penalty(ts) == pytest.approx(1.6)
+
+
+def test_internal_lanes_collects_all_connections_per_index():
+    # one signal index controlling two connections -> both via lanes must appear
+    links = [[("iA", "oA", ":C_0"), ("iB", "oB", ":C_1")]]
+    sumo = SimpleNamespace(
+        trafficlight=SimpleNamespace(getControlledLinks=lambda _id: links)
+    )
+    ts = SimpleNamespace(sumo=sumo, id="C")
+    assert set(ec._internal_lanes(ts)) == {":C_0", ":C_1"}
