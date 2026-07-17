@@ -109,3 +109,23 @@ def test_internal_lanes_collects_all_connections_per_index():
     )
     ts = SimpleNamespace(sumo=sumo, id="C")
     assert set(ec._internal_lanes(ts)) == {":C_0", ":C_1"}
+
+
+def test_reward_lambda_zero_is_pure_efficiency(monkeypatch):
+    monkeypatch.setattr(ec, "_efficiency", lambda ts: 7.0)
+    # safety must be ignored entirely at lam=0
+    monkeypatch.setattr(ec, "_safety_penalty", lambda ts: 999.0)
+    fn = ec.make_safety_reward_fn(0.0)
+    assert fn(object()) == pytest.approx(7.0)
+
+
+def test_reward_subtracts_scaled_safety(monkeypatch):
+    monkeypatch.setattr(ec, "_efficiency", lambda ts: 7.0)
+    monkeypatch.setattr(ec, "_safety_penalty", lambda ts: 4.0)
+    fn = ec.make_safety_reward_fn(0.5, scale=2.0)
+    # 7.0 - 0.5 * (4.0 / 2.0) = 6.0
+    assert fn(object()) == pytest.approx(6.0)
+
+
+def test_reward_fn_has_unique_name():
+    assert ec.make_safety_reward_fn(1.0).__name__ != ec.make_safety_reward_fn(0.0).__name__

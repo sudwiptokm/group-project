@@ -81,6 +81,29 @@ def _safety_penalty(ts) -> float:
     return brake_term + exposure_term
 
 
+def _efficiency(ts) -> float:
+    # sumo-rl's built-in diff-waiting-time reward; manages ts.last_measure state
+    return TrafficSignal._diff_waiting_time_reward(ts)
+
+
+def make_safety_reward_fn(lam: float, scale: float = None):
+    """Return a sumo-rl reward_fn(ts) = diff_waiting_time - lam * safety/scale.
+
+    At lam == 0 the safety term is not even computed (pure efficiency, and an
+    exact ablation baseline). `scale` defaults to the calibrated SAFETY_SCALE.
+    """
+    s = SAFETY_SCALE if scale is None else scale
+
+    def reward_fn(ts):
+        eff = _efficiency(ts)
+        if lam == 0.0:
+            return eff
+        return eff - lam * (_safety_penalty(ts) / s)
+
+    reward_fn.__name__ = f"safety_reward_lam{lam}"
+    return reward_fn
+
+
 class PCUObservationFunction(ObservationFunction):
     """
     Observation per traffic signal:
