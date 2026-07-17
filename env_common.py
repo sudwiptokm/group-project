@@ -9,6 +9,8 @@ The observation is PCU-WEIGHTED (motorcycle 0.3, auto 0.5, car 1.0) so the
 controller sees passenger-car equivalents instead of raw vehicle counts.
 """
 
+from typing import Optional
+
 import numpy as np
 from gymnasium import spaces
 
@@ -86,18 +88,20 @@ def _efficiency(ts) -> float:
     return TrafficSignal._diff_waiting_time_reward(ts)
 
 
-def make_safety_reward_fn(lam: float, scale: float = None):
+def make_safety_reward_fn(lam: float, scale: Optional[float] = None):
     """Return a sumo-rl reward_fn(ts) = diff_waiting_time - lam * safety/scale.
 
     At lam == 0 the safety term is not even computed (pure efficiency, and an
-    exact ablation baseline). `scale` defaults to the calibrated SAFETY_SCALE.
+    exact ablation baseline). `scale` defaults to the calibrated SAFETY_SCALE,
+    resolved at call time so a later re-calibration of SAFETY_SCALE is honoured.
     """
-    s = SAFETY_SCALE if scale is None else scale
-
     def reward_fn(ts):
         eff = _efficiency(ts)
         if lam == 0.0:
             return eff
+        s = SAFETY_SCALE if scale is None else scale
+        if s == 0:
+            raise ValueError("safety scale must be non-zero")
         return eff - lam * (_safety_penalty(ts) / s)
 
     reward_fn.__name__ = f"safety_reward_lam{lam}"
