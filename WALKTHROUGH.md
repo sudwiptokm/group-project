@@ -439,13 +439,21 @@ python compare.py                        # winner = lowest system_mean_waiting_t
 caffeinate -i env ALGOS="<winner>" LAMBDAS="0.0 0.5 1.0" ./run_experiment.sh --skip-tune
 python compare.py                        # tradeoff table → logs/comparison.csv
 
-# Later, full-budget re-run (prefer a server):
-caffeinate -i env MODE=full ./run_experiment.sh && python compare.py
+# Later, full-budget re-run (prefer a server) — see note below on --force:
+caffeinate -i env MODE=full ./run_experiment.sh --force && python compare.py
 ```
 
 Explicit env vars override the preset, e.g. `MODE=overnight STEPS=50000 ./run_experiment.sh`.
 `caffeinate -i` keeps the Mac awake. The driver is resumable (skips existing
 artifacts) and fault-tolerant (a failed run is logged, not fatal).
+
+**Switching overnight → full.** Output filenames encode algo/scenario/λ/seed but
+**not** the mode, so both modes write the same names. Because the driver is resumable,
+a `MODE=full` run started after an overnight run would find the overnight files and
+skip them. Two options:
+- `MODE=full ... ./run_experiment.sh --force` — redo everything at full budget (overwrites).
+- Keep both: `mv models models_overnight && mv logs logs_overnight` first, then run
+  `MODE=full` without `--force` (writes fresh into new `models/` + `logs/`).
 
 ### Monitor training
 ```bash

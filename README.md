@@ -150,6 +150,30 @@ Any explicit env var **overrides** the preset (e.g. `MODE=overnight STEPS=50000 
 > single night. Run `overnight` first; re-run `MODE=full` later (on a server ideally)
 > for publication-strength numbers. Both modes produce the identical table format.
 
+#### Switching from overnight to full
+
+Just prefix `MODE=full` on the command — it swaps every budget knob at once:
+
+```bash
+MODE=full caffeinate -i ./run_experiment.sh --force
+```
+
+> **Important — why `--force` is needed.** Output filenames encode algo/scenario/λ/seed
+> but **not** the mode, so overnight and full write to the *same* names. The driver is
+> resumable (skips existing artifacts), so without `--force` a full run would find the
+> overnight files and skip them — leaving you with overnight results. `--force` redoes
+> everything at full budget.
+
+To **keep both** result sets instead, stash the overnight outputs first:
+
+```bash
+mv models models_overnight && mv logs logs_overnight
+MODE=full caffeinate -i ./run_experiment.sh        # fresh full run, no --force needed
+```
+
+Apply the same to Stage 2:
+`MODE=full env ALGOS="<winner>" LAMBDAS="0.0 0.5 1.0" ./run_experiment.sh --skip-tune --force`.
+
 ### Step 0 — one-time setup
 
 ```bash
