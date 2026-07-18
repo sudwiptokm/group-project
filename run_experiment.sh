@@ -7,10 +7,11 @@
 # continues where it left off. One failed run is logged and skipped — it does
 # not abort the batch. A fixed-time baseline is generated once per scenario.
 #
-#   ./run_experiment.sh                 # full ladder, default budgets
+#   MODE=overnight ./run_experiment.sh  # fast preset (~12-18h), the default
+#   MODE=full ./run_experiment.sh       # publication budget (~11 days; use a server)
 #   ./run_experiment.sh --skip-tune     # use current params/ (or defaults)
 #   ALGOS="dqn ppo" ./run_experiment.sh # subset of algorithms
-#   STEPS=50000 TRAIN_SEEDS="0 1" ./run_experiment.sh   # smaller run
+#   STEPS=50000 TRAIN_SEEDS="0 1" ./run_experiment.sh   # override preset knobs
 #   ./run_experiment.sh --force         # ignore existing artifacts, redo everything
 #   SCENARIOS="peak" LAMBDAS="0.0 0.5" ./run_experiment.sh   # subset of axes
 #
@@ -24,18 +25,36 @@
 
 set -uo pipefail
 
-# ---- config -----------------------------------------------------------------
+# ---- mode presets -----------------------------------------------------------
+# MODE picks a budget preset. Explicit env vars below still override the preset.
+#   overnight : short episodes + small budgets, finishes in ~1 night (~12-18h).
+#   full      : publication budget (~11 days on a laptop; use a server).
+# Run overnight first for a quick end-to-end result, then re-run with MODE=full.
+MODE="${MODE:-overnight}"
+case "$MODE" in
+    overnight)
+        _EPISODE=1200; _STEPS=30000;  _TRIALS=12; _TSTEPS=10000
+        _TRAIN_SEEDS="0 1 2";       _EVAL_SEEDS="42 43 44" ;;
+    full)
+        _EPISODE=3600; _STEPS=100000; _TRIALS=30; _TSTEPS=20000
+        _TRAIN_SEEDS="0 1 2 3 4";   _EVAL_SEEDS="42 43 44 45 46" ;;
+    *) echo "unknown MODE: $MODE (use 'overnight' or 'full')"; exit 2 ;;
+esac
+
+# ---- config (explicit env vars override the MODE preset) --------------------
 ALGOS="${ALGOS:-dqn qrdqn ppo a2c}"
 SCENARIOS="${SCENARIOS:-peak offpeak}"
 # Stage 1 reference: single lambda. Stage 2 sweep: set to "0.0 0.5 1.0"
 # Values MUST include the decimal point — see note above.
 LAMBDAS="${LAMBDAS:-0.5}"
-TRAIN_SEEDS="${TRAIN_SEEDS:-0 1 2 3 4}"
-EVAL_SEEDS="${EVAL_SEEDS:-42 43 44 45 46}"
-STEPS="${STEPS:-100000}"          # per training run
-TUNE_TRIALS="${TUNE_TRIALS:-30}"
-TUNE_STEPS="${TUNE_STEPS:-20000}" # per Optuna trial
+TRAIN_SEEDS="${TRAIN_SEEDS:-$_TRAIN_SEEDS}"
+EVAL_SEEDS="${EVAL_SEEDS:-$_EVAL_SEEDS}"
+STEPS="${STEPS:-$_STEPS}"              # per training run
+TUNE_TRIALS="${TUNE_TRIALS:-$_TRIALS}"
+TUNE_STEPS="${TUNE_STEPS:-$_TSTEPS}"   # per Optuna trial
 TUNE_EVAL_SEEDS="${TUNE_EVAL_SEEDS:-42 43}"
+EPISODE_SECONDS="${EPISODE_SECONDS:-$_EPISODE}"  # sim-seconds per episode
+export EPISODE_SECONDS                 # consumed by env_common.make_env
 
 SKIP_TUNE=0
 SKIP_TRAIN=0
