@@ -33,6 +33,11 @@ from env_common import make_env
 PARAMS_DIR = "params"
 
 
+def _tag(scenario: str, lam: float) -> str:
+    # lam 0.5 -> "05", 1.0 -> "10", 0 -> "00" ; glob-safe filename fragment
+    return f"{scenario}_lam{str(lam).replace('.', '')}"
+
+
 def load_params(algo: str, use_defaults: bool) -> dict:
     """Tuned params/<algo>.json if present (and not overridden), else defaults."""
     path = os.path.join(PARAMS_DIR, f"{algo}.json")
@@ -56,25 +61,31 @@ def _materialise(saved: dict) -> dict:
 
 
 # ----------------------------------------------------------------------------
-def train(algo: str, steps: int, seed: int, use_defaults: bool):
+def train(algo: str, steps: int, seed: int, use_defaults: bool,
+          scenario: str = "base", lam: float = 0.0):
     os.makedirs("models", exist_ok=True)
     os.makedirs("logs", exist_ok=True)
 
-    env = make_env(seed=seed, gui=False, out_csv=f"logs/{algo}_seed{seed}")
+    tag = _tag(scenario, lam)
+    env = make_env(seed=seed, scenario=scenario, lam=lam, gui=False,
+                   out_csv=f"logs/{algo}_{tag}_seed{seed}")
     env = Monitor(env)
 
     params = load_params(algo, use_defaults)
     model = build(algo, env, params, seed=seed, tb_log="logs/tb")
     model.learn(total_timesteps=steps, progress_bar=True)
 
-    path = f"models/{algo}_seed{seed}.zip"
+    path = f"models/{algo}_{tag}_seed{seed}.zip"
     model.save(path)
     env.close()
     print(f"saved {path}")
 
 
-def evaluate(algo: str, model_path: str, seed: int, gui: bool):
-    env = make_env(seed=seed, gui=gui, out_csv=f"logs/eval_{algo}_seed{seed}")
+def evaluate(algo: str, model_path: str, seed: int, gui: bool,
+             scenario: str = "base", lam: float = 0.0):
+    tag = _tag(scenario, lam)
+    env = make_env(seed=seed, scenario=scenario, lam=lam, gui=gui,
+                   out_csv=f"logs/eval_{algo}_{tag}_seed{seed}")
     model = ALGOS[algo]["cls"].load(model_path)
     obs, _ = env.reset()
     done = False
@@ -88,7 +99,7 @@ def evaluate(algo: str, model_path: str, seed: int, gui: bool):
     # never gets one, so save it explicitly before closing the connection.
     env.save_csv(env.out_csv_name, env.episode)
     env.close()
-    csv = f"logs/eval_{algo}_seed{seed}_conn{env.label}_ep{env.episode}.csv"
+    csv = f"logs/eval_{algo}_{tag}_seed{seed}_conn{env.label}_ep{env.episode}.csv"
     print(f"eval {algo} seed={seed} total_reward={total_r:.1f}  (metrics -> {csv})")
 
 
@@ -105,9 +116,13 @@ if __name__ == "__main__":
     p.add_argument("--gui", action="store_true", help="show sumo-gui during eval")
     p.add_argument("--defaults", action="store_true",
                    help="ignore params/<algo>.json, force default hyperparameters")
+    p.add_argument("--scenario", default="base", choices=["base", "peak", "offpeak"])
+    p.add_argument("--lam", type=float, default=0.0, help="safety-reward weight")
     args = p.parse_args()
 
     if args.eval:
-        evaluate(args.algo, args.eval, seed=args.seed, gui=args.gui)
+        evaluate(args.algo, args.eval, seed=args.seed, gui=args.gui,
+                 scenario=args.scenario, lam=args.lam)
     else:
-        train(args.algo, steps=args.steps, seed=args.seed, use_defaults=args.defaults)
+        train(args.algo, steps=args.steps, seed=args.seed, use_defaults=args.defaults,
+              scenario=args.scenario, lam=args.lam)

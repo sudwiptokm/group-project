@@ -40,8 +40,8 @@ def _serialisable(params: dict) -> dict:
     return out
 
 
-def _eval_reward(model, seed: int) -> float:
-    env = make_env(seed=seed, gui=False, out_csv=None)
+def _eval_reward(model, seed: int, scenario: str, lam: float) -> float:
+    env = make_env(seed=seed, scenario=scenario, lam=lam, gui=False, out_csv=None)
     try:
         obs, _ = env.reset()
         done = False
@@ -56,10 +56,10 @@ def _eval_reward(model, seed: int) -> float:
         env.close()
 
 
-def make_objective(algo: str, steps: int, train_seed: int, eval_seeds):
+def make_objective(algo: str, steps: int, train_seed: int, eval_seeds, scenario: str, lam: float):
     def objective(trial: optuna.Trial) -> float:
         params = ALGOS[algo]["sample"](trial)
-        env = make_env(seed=train_seed, gui=False, out_csv=None)
+        env = make_env(seed=train_seed, scenario=scenario, lam=lam, gui=False, out_csv=None)
         try:
             model = build(algo, env, params, seed=train_seed, tb_log=None)
             model.learn(total_timesteps=steps, progress_bar=False)
@@ -70,7 +70,7 @@ def make_objective(algo: str, steps: int, train_seed: int, eval_seeds):
         finally:
             env.close()
 
-        rewards = [_eval_reward(model, s) for s in eval_seeds]
+        rewards = [_eval_reward(model, s, scenario=scenario, lam=lam) for s in eval_seeds]
         mean_r = float(np.mean(rewards))
         trial.set_user_attr("eval_rewards", rewards)
         return mean_r
@@ -88,6 +88,8 @@ def main():
     p.add_argument("--steps", type=int, default=20_000, help="per-trial training budget")
     p.add_argument("--train-seed", type=int, default=0)
     p.add_argument("--eval-seeds", type=int, nargs="+", default=[42, 43])
+    p.add_argument("--scenario", default="peak", choices=["base", "peak", "offpeak"])
+    p.add_argument("--lam", type=float, default=0.5, help="safety-reward weight for tuning")
     args = p.parse_args()
 
     os.makedirs(PARAMS_DIR, exist_ok=True)
@@ -97,7 +99,7 @@ def main():
         study_name=f"{args.algo}_tuning",
         sampler=optuna.samplers.TPESampler(seed=args.train_seed),
     )
-    objective = make_objective(args.algo, args.steps, args.train_seed, args.eval_seeds)
+    objective = make_objective(args.algo, args.steps, args.train_seed, args.eval_seeds, args.scenario, args.lam)
     study.optimize(objective, n_trials=args.trials, show_progress_bar=True)
 
     best = ALGOS[args.algo]["sample"](
