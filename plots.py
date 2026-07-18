@@ -8,9 +8,9 @@ to results/:
   tradeoff_<scenario>.png        efficiency & safety-proxy vs lambda for the winner
                                  (only when a scenario has >= 2 lambda values)
 
-The eval CSVs log sumo-rl's standard metrics (waiting time, stopped count, speed),
-not the raw safety penalty, so the tradeoff plot uses system_total_stopped as a
-safety-adjacent proxy alongside the waiting-time efficiency metric.
+The tradeoff plot's safety axis uses system_safety_total (the raw vulnerability-
+weighted brake + exposure penalty, logged by SafetyLoggingEnv). For older CSVs that
+predate that logging it falls back to system_total_stopped as a proxy.
 
 Run AFTER compare.py has written logs/comparison.csv:
 
@@ -27,9 +27,17 @@ matplotlib.use("Agg")  # headless: save files, never open a window
 import matplotlib.pyplot as plt
 import pandas as pd
 
-EFF = "system_mean_waiting_time"      # efficiency headline (lower = better)
-SAFETY_PROXY = "system_total_stopped"  # safety-adjacent proxy (lower = better)
+EFF = "system_mean_waiting_time"       # efficiency headline (lower = better)
+SAFETY = "system_safety_total"         # raw weighted safety penalty (lower = better)
+SAFETY_FALLBACK = "system_total_stopped"  # proxy for CSVs predating safety logging
 BASELINE = "fixedtime"
+
+
+def _safety_metric(df) -> tuple:
+    """Return (column, label) — real safety metric if present, else the proxy."""
+    if f"{SAFETY}_mean" in df.columns:
+        return SAFETY, "weighted safety events (brake+exposure)"
+    return SAFETY_FALLBACK, "total stopped (safety proxy)"
 
 # filename lambda tag -> numeric value
 LAM_VALUE = {"00": 0.0, "05": 0.5, "10": 1.0}
@@ -80,14 +88,16 @@ def plot_tradeoff(df: pd.DataFrame, out_dir: str) -> list:
         if len(lams_present) < 2:
             continue  # a curve needs at least two lambda points
 
+        saf_col, saf_label = _safety_metric(sdf)
+
         fig, (ax_eff, ax_saf) = plt.subplots(1, 2, figsize=(11, 4))
         for algo, adf in rl.groupby("algo"):
             adf = adf.sort_values("lam", key=lambda s: s.map(_lam_float))
             xs = [_lam_float(l) for l in adf["lam"]]
             ax_eff.errorbar(xs, adf[f"{EFF}_mean"], yerr=adf[f"{EFF}_std"].fillna(0),
                             marker="o", capsize=3, label=algo)
-            ax_saf.errorbar(xs, adf[f"{SAFETY_PROXY}_mean"],
-                            yerr=adf[f"{SAFETY_PROXY}_std"].fillna(0),
+            ax_saf.errorbar(xs, adf[f"{saf_col}_mean"],
+                            yerr=adf[f"{saf_col}_std"].fillna(0),
                             marker="o", capsize=3, label=algo)
 
         # fixed-time reference (lambda-independent) as a horizontal line
@@ -95,13 +105,13 @@ def plot_tradeoff(df: pd.DataFrame, out_dir: str) -> list:
         if not base.empty:
             ax_eff.axhline(base[f"{EFF}_mean"].iloc[0], ls="--", color="tab:orange",
                            label="fixed-time")
-            ax_saf.axhline(base[f"{SAFETY_PROXY}_mean"].iloc[0], ls="--",
+            ax_saf.axhline(base[f"{saf_col}_mean"].iloc[0], ls="--",
                            color="tab:orange", label="fixed-time")
 
         ax_eff.set(xlabel="safety weight λ", ylabel="mean waiting time (s)",
                    title=f"{scenario}: efficiency vs λ")
-        ax_saf.set(xlabel="safety weight λ", ylabel="total stopped (safety proxy)",
-                   title=f"{scenario}: safety proxy vs λ")
+        ax_saf.set(xlabel="safety weight λ", ylabel=saf_label,
+                   title=f"{scenario}: safety vs λ")
         for ax in (ax_eff, ax_saf):
             ax.grid(alpha=0.3)
             ax.legend(fontsize=8)

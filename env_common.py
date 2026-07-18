@@ -60,8 +60,10 @@ def _internal_lanes(ts) -> list:
     return list({conn[2] for lk in links if lk for conn in lk if conn and conn[2]})
 
 
-def _safety_penalty(ts) -> float:
-    """Composite, vulnerability-weighted safety penalty for the current step.
+def _safety_components(ts):
+    """Return (brake_term, exposure_term), the two vulnerability-weighted safety
+    sub-terms for the current step. Shared by the reward and the metric logging so
+    they never diverge.
 
     brake_term    : sum of vulnerability over vehicles braking harder than B_THRESH
     exposure_term : sum of vulnerability over vehicles on internal junction lanes
@@ -81,6 +83,12 @@ def _safety_penalty(ts) -> float:
             for vid in sumo.lane.getLastStepVehicleIDs(lane):
                 exposure_term += _vehicle_vuln(sumo.vehicle.getTypeID(vid))
 
+    return brake_term, exposure_term
+
+
+def _safety_penalty(ts) -> float:
+    """Composite safety penalty = brake_term + exposure_term (see _safety_components)."""
+    brake_term, exposure_term = _safety_components(ts)
     return brake_term + exposure_term
 
 
@@ -169,13 +177,48 @@ SCENARIO_ROUTES = {
 }
 
 
+class SafetyLoggingEnv(SumoEnvironment):
+    """SumoEnvironment that also records the raw safety sub-terms each step.
+
+    Adds three columns to the metrics CSV (summed over all traffic signals):
+        system_safety_brake     vulnerability-weighted emergency-braking events
+        system_safety_exposure  vulnerability-weighted intersection exposure
+        system_safety_total     brake + exposure (the raw, unscaled safety penalty)
+
+    These are the actual safety quantities the reward penalises — logged so
+    compare.py / plots.py can report them instead of a proxy like stopped count.
+    """
+
+    def _get_safety_info(self) -> dict:
+        brake = exposure = 0.0
+        for ts in self.traffic_signals.values():
+            b, e = _safety_components(ts)
+            brake += b
+            exposure += e
+        return {
+            "system_safety_brake": brake,
+            "system_safety_exposure": exposure,
+            "system_safety_total": brake + exposure,
+        }
+
+    def _compute_info(self):
+        # super() builds the standard info dict and appends it to self.metrics;
+        # patch both the returned dict and the stored row with the safety terms.
+        info = super()._compute_info()
+        safety = self._get_safety_info()
+        info.update(safety)
+        if self.metrics:
+            self.metrics[-1].update(safety)
+        return info
+
+
 def make_env(seed: int, scenario: str = "base", lam: float = 0.0,
              gui: bool = False, out_csv: str = None) -> SumoEnvironment:
     # vtypes + sublane always; gui-settings only under sumo-gui (plain sumo rejects it)
     extra = "--additional-files vtypes.add.xml --lateral-resolution 0.5"
     if gui:
         extra += " --gui-settings-file gui-settings.xml --start --quit-on-end"
-    return SumoEnvironment(
+    return SafetyLoggingEnv(
         net_file="intersection.net.xml",
         route_file=SCENARIO_ROUTES[scenario],
         observation_class=PCUObservationFunction,
