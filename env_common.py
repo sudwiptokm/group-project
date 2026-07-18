@@ -41,7 +41,7 @@ VULNERABILITY = {"moto": 1.0, "auto": 0.6, "car": 0.3}
 DEFAULT_VULN = 0.3  # unknown type -> treat as a car (least vulnerable)
 
 B_THRESH = 4.5      # m/s^2 : |deceleration| above this counts as an emergency brake (used in safety reward; see spec section 4)
-SAFETY_SCALE = 1.0  # calibration constant; set in a later task (see spec section 4)
+SAFETY_SCALE = 0.024  # calibrated: mean_safety/mean|eff| on peak seed0 (0.206/8.44); see spec section 4
 
 
 def _vehicle_vuln(type_id: str) -> float:

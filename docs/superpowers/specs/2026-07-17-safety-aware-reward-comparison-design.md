@@ -79,10 +79,14 @@ reward(step) = diff_waiting_time  −  λ · (safety / SAFETY_SCALE)
 
 - `diff_waiting_time` — sumo-rl's existing built-in reward, unchanged, so the
   efficiency component stays comparable to earlier runs.
-- `SAFETY_SCALE` — a one-time calibration constant. Procedure: run one short episode at
+- `SAFETY_SCALE` — a one-time calibration constant. Procedure: run one episode at
   λ=0, record mean |diff_waiting_time| and mean raw safety magnitude, set `SAFETY_SCALE`
   so the two are of comparable magnitude. Then **lock and document** the value. This makes
   λ ≈ 1 a meaningful "equal emphasis" point rather than an arbitrary multiplier.
+  **Calibrated value (peak scenario, seed 0, via `calibrate_probe.py`):**
+  `mean|diff_waiting_time| = 8.44`, `mean_safety = 0.206` →
+  **`SAFETY_SCALE = 0.206 / 8.44 ≈ 0.024`** (locked in `env_common.py`). At λ=1 the
+  scaled safety term `safety / 0.024` then has mean magnitude ≈ 8.44, matching efficiency.
 - **λ is the invariant per stage.** At a given λ, every algorithm sees the identical
   reward function; fairness preserved. λ becomes an experiment axis only in Stage 2.
 
