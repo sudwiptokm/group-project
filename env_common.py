@@ -9,6 +9,7 @@ The observation is PCU-WEIGHTED (motorcycle 0.3, auto 0.5, car 1.0) so the
 controller sees passenger-car equivalents instead of raw vehicle counts.
 """
 
+import os
 from typing import Optional
 
 import numpy as np
@@ -179,7 +180,9 @@ def make_env(seed: int, scenario: str = "base", lam: float = 0.0,
         route_file=SCENARIO_ROUTES[scenario],
         observation_class=PCUObservationFunction,
         use_gui=gui,
-        num_seconds=3600,
+        # episode length in sim-seconds; EPISODE_SECONDS env var lets the driver
+        # shrink episodes for the fast "overnight" mode (default 3600 = full)
+        num_seconds=int(os.environ.get("EPISODE_SECONDS", "3600")),
         delta_time=5,          # seconds between agent decisions
         yellow_time=3,
         min_green=10,
