@@ -211,8 +211,9 @@ Keep `MODE` the same as Stage 1 (add `MODE=full` for the full-budget sweep).
 
 `plots.py` reads `logs/comparison.csv` and writes to `results/`:
 `bars_<scenario>_lam<LAM>.png` (RL vs fixed-time waiting time) and, once ≥2 λ values
-exist, `tradeoff_<scenario>.png` (efficiency + safety-proxy vs λ). Run it after
-either stage.
+exist, `tradeoff_<scenario>.png` (efficiency vs the raw weighted safety penalty —
+`system_safety_total`, logged by `SafetyLoggingEnv` — across λ). Run it after either
+stage.
 At **λ = 0** the safety term is skipped (pure diff-waiting-time) — the exact
 **ablation** baseline for measuring what the safety penalty costs in efficiency.
 `compare.py` always includes a **fixed-time baseline row** (from `baseline.py`), so

@@ -35,6 +35,9 @@ METRICS = [
     "system_total_stopped",
     "system_mean_speed",
     "system_total_waiting_time",
+    "system_safety_brake",     # vulnerability-weighted emergency braking (SafetyLoggingEnv)
+    "system_safety_exposure",  # vulnerability-weighted intersection exposure
+    "system_safety_total",     # brake + exposure = raw safety penalty
 ]
 RANK_KEY = "system_mean_waiting_time"  # lower is better
 

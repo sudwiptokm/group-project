@@ -129,3 +129,20 @@ def test_reward_subtracts_scaled_safety(monkeypatch):
 
 def test_reward_fn_has_unique_name():
     assert ec.make_safety_reward_fn(1.0).__name__ != ec.make_safety_reward_fn(0.0).__name__
+
+
+def test_safety_components_splits_brake_and_exposure():
+    # moto braking hard on approach (brake 1.0) + auto exposed on internal lane during
+    # yellow (exposure 0.6); components must split, and their sum == _safety_penalty.
+    ts = _fake_ts(
+        lane_vehicles={"L1": ["m1"]},
+        accel={"m1": -6.0},
+        types={"m1": "moto", "a1": "auto"},
+        is_yellow=True,
+        internal_lanes=[":C_0"],
+        internal_vehicles={":C_0": ["a1"]},
+    )
+    brake, exposure = ec._safety_components(ts)
+    assert brake == pytest.approx(1.0)
+    assert exposure == pytest.approx(0.6)
+    assert ec._safety_penalty(ts) == pytest.approx(brake + exposure)
