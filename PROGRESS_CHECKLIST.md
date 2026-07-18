@@ -10,9 +10,9 @@ Calendar says mid–**Sprint 5** (Experiments & Tuning). Reality: Sprints 1–4 
 ## Scope change vs original plan (note for report/viva)
 
 - ➕ Plan = **DQN vs fixed-time** only. Code = **4-algo ladder**: DQN, QR-DQN, PPO, A2C (fair-comparison design, shared env/reward/obs). More impressive, more compute.
-- 🟡 Reward: plan wanted **waiting + queue + safety-aware** term. Code uses **`diff-waiting-time` only**. No safety reward term implemented (Samalla & Chunchu motivation unused).
+- ✅ Reward: plan wanted **waiting + queue + safety-aware** term. Code now implements `diff_waiting_time − λ·(safety_penalty / SAFETY_SCALE)` via `make_safety_reward_fn(lam)` in `env_common.py`. λ = 0 gives the pure diff-waiting-time ablation baseline; λ > 0 adds the vulnerability-weighted safety penalty (emergency braking + intersection exposure). Samalla & Chunchu motivation is now directly reflected.
 - Action space: plan said "multi-discrete extend/switch"; code uses **discrete phase selection**. Fine, but wording in report must match code.
-- ⚠️ Baseline gap: `compare.py` ranks the **RL algos against each other** — there is **no fixed-time row** in it. Plan's core claim is *DQN vs fixed-time*. Fixed-time baseline exists as `tripinfo.xml` but is **not** in the same metric frame as the eval CSVs. Must bridge this.
+- ✅ Baseline gap resolved: `baseline.py` runs the fixed-time controller through the same eval-CSV path, and `compare.py` now includes a **fixed-time row** in the ranked table. The plan's core claim (*RL vs fixed-time*) is directly measurable.
 
 ---
 
@@ -36,7 +36,7 @@ Calendar says mid–**Sprint 5** (Experiments & Tuning). Reality: Sprints 1–4 
 
 - [x] State representation (`PCUObservationFunction`: phase one-hot + min-green flag + PCU density + PCU queue)
 - [x] Action space (discrete phase selection)
-- [x] Reward (`diff-waiting-time`) — 🟡 no queue/safety term (see scope note)
+- [x] Reward — safety-aware λ-weighted reward (`make_safety_reward_fn`) implemented in `env_common.py`; λ = 0 = pure diff-waiting-time ablation
 - [x] DQN implemented (via SB3 / sb3-contrib) — ➕ plus QR-DQN, PPO, A2C in `algos.py`
 - [x] TraCI ↔ agent integration (via `sumo-rl` `SumoEnvironment`)
 
@@ -50,8 +50,8 @@ Calendar says mid–**Sprint 5** (Experiments & Tuning). Reality: Sprints 1–4 
 ## Sprint 5 — Experiments & Tuning (M5, 26 Jul) ❌ ← **YOU ARE HERE, behind**
 
 - [ ] ❌ Hyperparameter tuning **for every model** (confirmed in-scope) — `tune.py` exists, **`params/` is empty** (never run). Must run per algo: dqn, qrdqn, ppo, a2c
-- [ ] ❌ Train across demand scenarios (peak / off-peak) — only one demand profile, one seed
-- [ ] ❌ Comparative experiments: **DQN vs fixed-time** — not run (and fixed-time not in compare frame)
+- [ ] ❌ Train across demand scenarios (peak / off-peak) — infra done (`make_scenarios.py` + scenario axis in `run_experiment.sh`); **run not executed yet**
+- [ ] ❌ Comparative experiments: **RL algos vs fixed-time** — infra done (`baseline.py` + fixed-time row in `compare.py`); **run not executed yet**
 - [ ] ❌ Collect metrics (avg delay, queue, throughput) — no `logs/eval_*.csv`, no `logs/comparison.csv`
 
 ## Sprint 6 — Analysis, Testing & Report (M6, 7 Aug) 🟡
@@ -76,12 +76,11 @@ Infra for all 4 steps already exists; `run_experiment.sh` chains them. This is a
 
 ## Critical path to hit 7 Aug (do in order)
 
-1. **Bridge fixed-time into the metric frame.** Add a fixed-time row to `compare.py` (parse `tripinfo.xml` or run a no-learning baseline episode through the same eval CSV path). Without this the winner isn't measured against the baseline. **Highest priority — it's the thesis.**
-2. **Tune every algo.** `tune.py --algo {dqn,qrdqn,ppo,a2c}` → fills `params/`. Reduced-budget trials (e.g. `--trials 30 --steps 20000`). Heaviest compute item.
-3. **Train all × seeds with tuned params.** 4 algos × 3 seeds × 100k steps.
-4. **Eval on held-out seeds → `compare.py`.** Produces ranked table + winner. Clears Sprint 5.
-   → Steps 2–4 = one command: `./run_experiment.sh`.
-5. **Demand scenarios.** Peak + off-peak `traffic.rou.xml` variants, re-run compare per scenario.
+1. ~~**Bridge fixed-time into the metric frame.**~~ ✅ Done — `baseline.py` + `compare.py` fixed-time row implemented.
+2. ~~**Peak / off-peak scenario files.**~~ ✅ Done — `make_scenarios.py` implemented; `run_experiment.sh` scenario axis added.
+3. ~~**Safety-aware reward.**~~ ✅ Done — `make_safety_reward_fn(lam)` in `env_common.py`.
+4. **Run Stage 1** — generate scenarios, then `caffeinate -i ./run_experiment.sh` (all algos, λ=0.5, peak+offpeak). Read winner from `compare.py`. **Heaviest compute item.**
+5. **Run Stage 2** — `caffeinate -i env ALGOS="<winner>" LAMBDAS="0.0 0.5 1.0" ./run_experiment.sh --skip-tune` → tradeoff table in `logs/comparison.csv`.
 6. **Analyse + plots + report + full system testing + viva** — Sprint 6.
 
 ## Decisions (LOCKED 17 Jul)
@@ -93,9 +92,15 @@ Infra for all 4 steps already exists; `run_experiment.sh` chains them. This is a
 
 ## Prerequisite code changes (before any run)
 
-1. **Safety-aware reward** in `env_common.py` — custom reward = diff-waiting-time − λ·(safety penalty). Must be held identical across all algos.
-2. **Peak / off-peak route files** — two `traffic.rou.xml` variants; `make_env`/`run_experiment.sh` parameterised by scenario.
-3. **Fixed-time baseline into `compare.py`** — baseline row in same metric frame as RL eval CSVs.
+- [x] **Safety-aware reward** in `env_common.py` — `make_safety_reward_fn(lam)` produces `diff_waiting_time − λ·(safety_penalty / SAFETY_SCALE)`; vulnerability-weighted composite penalty (emergency braking + intersection exposure); held identical across all algos at a given λ.
+- [x] **Peak / off-peak route files** — `make_scenarios.py` generates `traffic_peak.rou.xml` + `traffic_offpeak.rou.xml`; `make_env`, `train.py`, `tune.py`, and `run_experiment.sh` parameterised by `--scenario`.
+- [x] **Fixed-time baseline into `compare.py`** — `baseline.py` runs fixed-time controller through eval-CSV path; `compare.py` includes fixed-time row in ranked table.
+- [x] **`run_experiment.sh` scenario × λ axes** — `LAMBDAS` env-var sweeps λ values; `--skip-tune` stage-2 flag; scenario loop across peak/offpeak.
+
+> **Code/infra for the two-stage tuned comparison is complete and committed on
+> branch `feature/safety-aware-reward-comparison`.** The actual compute run
+> (tuning, training, eval, analysis, plots, report) has NOT been executed yet —
+> those remain open items in the sprint checklists below.
 
 ## Run scale (locked choices)
 
