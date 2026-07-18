@@ -162,14 +162,49 @@ The custom observation. For the traffic signal it builds a vector:
   - Lane capacity ≈ `lane_length / CAR_FOOTPRINT` where `CAR_FOOTPRINT = 4.5 + 2.0`.
 - `observation_space()` — a `Box(0, 1)` of size `num_green_phases + 1 + 2 * num_lanes`.
 
-**`make_env(seed, gui=False, out_csv=None) -> SumoEnvironment`**
+**`VULNERABILITY_WEIGHT`**
+Per-type vulnerability weights used by the safety penalty: `moto=1.0, auto=0.6,
+car=0.3`. These are the **inverse** of crash-protection level (motorcycles offer
+the least protection), mirroring the PCU idea but in the safety direction.
+
+**`make_safety_reward_fn(lam) -> callable`**
+Returns a reward function that produces the safety-aware reward for a given λ:
+
+```
+reward = diff_waiting_time − λ · (safety_penalty / SAFETY_SCALE)
+```
+
+`safety_penalty` is a **composite, vulnerability-weighted** term computed each
+step:
+- **Emergency-braking component** — vehicles on approach lanes decelerating harder
+  than `B_THRESH = 4.5 m/s²` (hard-braking event), each weighted by its
+  vulnerability weight.
+- **Intersection-exposure component** — vehicles on internal junction lanes during
+  a yellow or clearing phase (high-conflict-risk window), each weighted by
+  vulnerability.
+
+Both components are summed into a single `safety_penalty` value.
+
+`SAFETY_SCALE` is a one-time calibration constant set so that the mean safety
+penalty magnitude is roughly equal to the mean |diff-waiting-time| signal — making
+λ ≈ 1 an **equal-emphasis** point where efficiency and safety are weighted equally.
+The exact value is determined from a short calibration run and fixed thereafter.
+
+λ is the **invariant per comparison stage**: at a given λ, every algorithm sees
+the identical reward function. At **λ = 0** the safety term is skipped entirely,
+making it a **pure diff-waiting-time** run — the exact ablation baseline against
+the λ > 0 runs.
+
+**`make_env(seed, lam=0.0, route_file=None, gui=False, out_csv=None) -> SumoEnvironment`**
 The single environment factory. It pins every knob so nothing varies between
 algorithms:
-- `net_file`, `route_file`, `observation_class=PCUObservationFunction`
+- `net_file`, `route_file` (defaults to `traffic.rou.xml`; pass a peak/off-peak
+  file to switch scenario), `observation_class=PCUObservationFunction`
 - `num_seconds=3600` (1-hour episode)
 - `delta_time=5` — seconds between agent decisions
 - `yellow_time=3`, `min_green=10`, `max_green=60`
-- `reward_fn="diff-waiting-time"` — **the same reward for all agents**
+- `reward_fn=make_safety_reward_fn(lam)` — **the same reward for all agents** at
+  a given λ; λ = 0 reduces to pure `diff-waiting-time`
 - `single_agent=True` — one traffic light → Stable-Baselines3 single-agent API
 - `additional_sumo_cmd` — loads `vtypes.add.xml` and enables the sublane model
   (`--lateral-resolution 0.5`). Under GUI it also loads `gui-settings.xml`.
@@ -282,7 +317,36 @@ over the episode → one row per run.
 2. Sort by mean waiting time, print a formatted `mean ± std` table.
 3. Announce the winner and write the full table to `logs/comparison.csv`.
 
-### 4.6 `run_experiment.sh` — the one-shot driver
+### 4.6 `make_scenarios.py` — peak / off-peak route file generator
+
+Generates the two demand-scenario route files used by the two-stage comparison:
+
+- **Peak** (`traffic_peak.rou.xml`) — heavy demand; through flows raised to
+  ~500–600 veh/h, turns proportionally higher.
+- **Off-peak** (`traffic_offpeak.rou.xml`) — light demand; flows roughly halved.
+
+Run once before any training or tuning. Both files share the same vehicle-type
+distribution (60/25/15 moto/auto/car) and route structure as `traffic.rou.xml`;
+only the `vehsPerHour` values change. `make_env` (and `run_experiment.sh`) accept
+a `--scenario peak|offpeak` argument that selects the corresponding route file.
+
+```bash
+python make_scenarios.py   # writes traffic_peak.rou.xml + traffic_offpeak.rou.xml
+```
+
+### 4.7 `baseline.py` — fixed-time baseline runner
+
+Runs the **fixed-time controller** (from `intersection.sumocfg`) through the same
+sumo-rl evaluation path so its metrics land in a CSV with the same column schema
+as the RL eval CSVs. This is what puts a **fixed-time row** in `compare.py`'s
+output.
+
+- Accepts `--scenario peak|offpeak` to run against the matching route file.
+- Writes `logs/eval_fixed_<scenario>_<timestamp>.csv`.
+- `compare.py` globs these alongside the RL eval CSVs and adds a `fixed-time`
+  entry to the ranked table, making the comparison vs. the baseline explicit.
+
+### 4.8 `run_experiment.sh` — the one-shot driver
 
 Runs the whole ladder unattended: **tune → train (all seeds) → eval (held-out) →
 compare**.
