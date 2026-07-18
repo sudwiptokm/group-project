@@ -125,62 +125,88 @@ python compare.py
 algorithm, ranks by mean waiting time (lower = better), and writes
 `logs/comparison.csv`.
 
-## Two-stage comparison protocol
+## Running the experiment — A-Z
 
-The experiment runs in two stages to keep compute tractable.
+The whole comparison runs through one driver, `run_experiment.sh`, in **two stages**.
+Compute budget is picked with a single **`MODE`** toggle.
 
-**Before the first run — generate scenario route files (once):**
+### The MODE toggle (overnight ⇄ full)
+
+`MODE` selects a budget preset. **`overnight` is the default.**
+
+| Knob | `MODE=overnight` (~12–18 h) | `MODE=full` (~11 days) |
+|------|------|------|
+| Episode length (`EPISODE_SECONDS`) | 1200 s | 3600 s |
+| Training steps (`STEPS`) | 30 000 | 100 000 |
+| Tuning trials (`TUNE_TRIALS`) | 12 | 30 |
+| Tuning steps (`TUNE_STEPS`) | 10 000 | 20 000 |
+| Train / eval seeds | 3 / 3 | 5 / 5 |
+
+Any explicit env var **overrides** the preset (e.g. `MODE=overnight STEPS=50000 ...`).
+
+> **Why two modes.** A full-budget run on a laptop is ~270 h (one full 3600 s SUMO
+> episode ≈ 97 s wall-clock, and there are thousands of them). `overnight` shrinks
+> the episodes and budgets so you get a complete, presentable end-to-end result in a
+> single night. Run `overnight` first; re-run `MODE=full` later (on a server ideally)
+> for publication-strength numbers. Both modes produce the identical table format.
+
+### Step 0 — one-time setup
 
 ```bash
 python make_scenarios.py   # writes traffic_peak.rou.xml + traffic_offpeak.rou.xml
 ```
 
-**Stage 1 — pick the best algorithm.**
-Tunes and trains all four algorithms at a fixed λ = 0.5, across both scenarios:
+### Step 1 — Stage 1: pick the best algorithm
+
+Tunes + trains all four algorithms at the reference λ = 0.5, across both scenarios,
+then ranks them (plus the fixed-time baseline) by mean waiting time:
 
 ```bash
+# overnight (default) — run this first
 caffeinate -i ./run_experiment.sh
-python compare.py          # read the winner (lowest system_mean_waiting_time)
+python compare.py          # winner = lowest system_mean_waiting_time
+
+# later, for full-budget numbers (long — prefer a server):
+caffeinate -i env MODE=full ./run_experiment.sh
+python compare.py
 ```
 
-`caffeinate -i` keeps the Mac awake for the overnight run. Reduce `TRAIN_SEEDS`
-and `EVAL_SEEDS` to 3 each if wall-clock time overruns.
+`caffeinate -i` keeps the Mac awake for the unattended run.
 
-**Stage 2 — safety tradeoff curve on the winning algorithm only.**
-Sweeps λ ∈ {0.0, 0.5, 1.0} with the tuned hyperparameters already in `params/`:
+### Step 2 — Stage 2: safety tradeoff curve (winner only)
+
+Sweeps λ ∈ {0.0, 0.5, 1.0} on the winning algorithm, reusing its tuned params:
 
 ```bash
 caffeinate -i env ALGOS="<winner>" LAMBDAS="0.0 0.5 1.0" ./run_experiment.sh --skip-tune
 python compare.py          # tradeoff table → logs/comparison.csv
 ```
 
-`compare.py` includes a **fixed-time baseline row** (produced by `baseline.py`) in
-the ranked table, so every RL result is measured against the fixed controller.
+Keep `MODE` the same as Stage 1 (add `MODE=full` for the full-budget sweep).
+At **λ = 0** the safety term is skipped (pure diff-waiting-time) — the exact
+**ablation** baseline for measuring what the safety penalty costs in efficiency.
+`compare.py` always includes a **fixed-time baseline row** (from `baseline.py`), so
+every RL result is measured against the fixed controller.
 
-At λ = 0 the safety term is skipped (pure diff-waiting-time) — this is the exact
-ablation baseline for measuring what the safety penalty costs in efficiency.
+### How the driver behaves
 
-## One-shot driver (unattended)
-
-`run_experiment.sh` runs the whole ladder — tune → train (all seeds) → eval
-(held-out) → compare — in one go. Resumable: existing `params/`, `models/` and
-eval CSVs are skipped, so re-running continues where it left off. A single failed
-run is logged and skipped, not fatal. Progress + a timestamped log in `logs/`.
+- **Resumable:** existing `params/`, `models/`, and eval CSVs are skipped — re-running
+  (or resuming after a crash) continues where it left off. `--force` redoes everything.
+- **Fault-tolerant:** a single failed run is logged and skipped, not fatal.
+- **Logged:** progress + a timestamped log land in `logs/`.
 
 ```bash
-./run_experiment.sh                      # full ladder, default budgets
+MODE=full ./run_experiment.sh            # publication budget
 ./run_experiment.sh --skip-tune          # reuse current params/ (or defaults)
 ./run_experiment.sh --force              # ignore existing artifacts, redo all
 ALGOS="dqn ppo" ./run_experiment.sh      # subset of algorithms
-STEPS=50000 TRAIN_SEEDS="0 1" TUNE_TRIALS=15 ./run_experiment.sh   # smaller run
+SCENARIOS="peak" LAMBDAS="0.0 0.5" ./run_experiment.sh   # subset of axes
 ```
 
-Tunable via env vars: `ALGOS`, `TRAIN_SEEDS`, `EVAL_SEEDS`, `STEPS`, `TUNE_TRIALS`,
-`TUNE_STEPS`, `TUNE_EVAL_SEEDS`. Eval uses each algo's first-seed model as the
-reference checkpoint.
-
-> Full defaults ≈ 4 algos × (tuning + 3 training runs × ~1.5 h) — an overnight job.
-> Trim `TRAIN_SEEDS` / `TUNE_TRIALS` / `STEPS` for a quick pass first.
+Env vars: `MODE`, `EPISODE_SECONDS`, `ALGOS`, `SCENARIOS`, `LAMBDAS`, `TRAIN_SEEDS`,
+`EVAL_SEEDS`, `STEPS`, `TUNE_TRIALS`, `TUNE_STEPS`, `TUNE_EVAL_SEEDS`. Eval uses each
+algo's first-seed model as the reference checkpoint.
+`LAMBDAS` values must include the decimal point (`0.0 0.5 1.0`, not `0 0.5 1`).
 
 Monitor training:
 

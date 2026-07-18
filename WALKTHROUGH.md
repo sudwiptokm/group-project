@@ -200,7 +200,9 @@ The single environment factory. It pins every knob so nothing varies between
 algorithms:
 - `net_file`, `route_file` (defaults to `traffic.rou.xml`; pass a peak/off-peak
   file to switch scenario), `observation_class=PCUObservationFunction`
-- `num_seconds=3600` (1-hour episode)
+- `num_seconds` — episode length in sim-seconds, read from the `EPISODE_SECONDS`
+  env var (default 3600 = 1-hour episode). The `overnight` run mode sets it to 1200
+  to shrink episodes; see section 5.
 - `delta_time=5` — seconds between agent decisions
 - `yellow_time=3`, `min_green=10`, `max_green=60`
 - `reward_fn=make_safety_reward_fn(lam)` — **the same reward for all agents** at
@@ -416,12 +418,34 @@ python compare.py
 # → prints mean ± std per algorithm, ranks by waiting time, writes logs/comparison.csv
 ```
 
-### Or: do Steps 2–5 in one command
+### Or: do Steps 2–5 in one command — with the MODE toggle
+
+`run_experiment.sh` chains tune → train → eval → compare. A single **`MODE`**
+env var picks the compute budget:
+
+- **`MODE=overnight`** (the default) — 1200 s episodes, 30k steps, 12 trials, 3 seeds.
+  A complete end-to-end result in ~12–18 h. **Run this first.**
+- **`MODE=full`** — 3600 s episodes, 100k steps, 30 trials, 5 seeds. Publication budget
+  (~11 days on a laptop; use a server). Run later once the overnight pass looks right.
+
 ```bash
-./run_experiment.sh                 # full ladder, default budgets
-./run_experiment.sh --skip-tune     # reuse current params/ (or defaults)
-STEPS=50000 TRAIN_SEEDS="0 1" ./run_experiment.sh   # smaller, faster pass
+python make_scenarios.py                 # once: build peak/off-peak route files
+
+# Stage 1 — pick best algorithm (overnight budget, the default)
+caffeinate -i ./run_experiment.sh
+python compare.py                        # winner = lowest system_mean_waiting_time
+
+# Stage 2 — safety λ-sweep on the winner only
+caffeinate -i env ALGOS="<winner>" LAMBDAS="0.0 0.5 1.0" ./run_experiment.sh --skip-tune
+python compare.py                        # tradeoff table → logs/comparison.csv
+
+# Later, full-budget re-run (prefer a server):
+caffeinate -i env MODE=full ./run_experiment.sh && python compare.py
 ```
+
+Explicit env vars override the preset, e.g. `MODE=overnight STEPS=50000 ./run_experiment.sh`.
+`caffeinate -i` keeps the Mac awake. The driver is resumable (skips existing
+artifacts) and fault-tolerant (a failed run is logged, not fatal).
 
 ### Monitor training
 ```bash
