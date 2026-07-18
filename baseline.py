@@ -23,12 +23,13 @@ def run_baseline(scenario: str, seed: int) -> str:
         action = (action + 1) % n_actions   # round-robin green phases = fixed-time
         done = terminated or truncated
     # sumo-rl only flushes the CSV on the NEXT reset(); a single eval episode
-    # never gets one, so save it explicitly — mirrors train.py's evaluate().
+    # never gets one, so save it explicitly.
+    # Mirrors train.py evaluate() exactly: env.save_csv(env.out_csv_name, env.episode)
     env.save_csv(env.out_csv_name, env.episode)
     env.close()
-    csv_path = f"{csv}_conn{env.label}_ep{env.episode}.csv"
-    print(f"baseline written: {csv_path}")
-    return csv_path
+    csv_out = f"logs/eval_fixedtime_{scenario}_seed{seed}_conn{env.label}_ep{env.episode}.csv"
+    print(f"baseline written: {csv_out}")
+    return csv_out
 
 
 if __name__ == "__main__":
