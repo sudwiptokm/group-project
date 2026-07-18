@@ -102,9 +102,19 @@ Infra for all 4 steps already exists; `run_experiment.sh` chains them. This is a
 > (tuning, training, eval, analysis, plots, report) has NOT been executed yet —
 > those remain open items in the sprint checklists below.
 
-## Run scale (locked choices)
+## Run scale — MODE toggle (overnight ⇄ full)
 
-- Tune: 4 algos × 30 trials × 20k steps × 2 scenarios
-- Train: 4 algos × 5 seeds × 100k steps × 2 scenarios
-- Eval: 4 algos × 5 held-out seeds × 2 scenarios + fixed-time baseline
-- → heavy. Overnight unattended via `run_experiment.sh`. Confirm laptop won't sleep (`caffeinate`).
+Reality check: full budget on a laptop ≈ **270 h** (one 3600 s SUMO episode ≈ 97 s
+wall-clock). So `run_experiment.sh` has a `MODE` toggle — run `overnight` first,
+`full` later (ideally on a server). Explicit env vars override either preset.
+
+| | `MODE=overnight` (~12–18 h) | `MODE=full` (~11 days) |
+|---|---|---|
+| Episode (`EPISODE_SECONDS`) | 1200 s | 3600 s |
+| Train steps | 30k | 100k |
+| Tune trials × steps | 12 × 10k | 30 × 20k |
+| Train / eval seeds | 3 / 3 | 5 / 5 |
+| Scenarios | peak + offpeak | peak + offpeak |
+
+Run: `caffeinate -i ./run_experiment.sh` (overnight, default) → `python compare.py`.
+Then `MODE=full` later. See README "Running the experiment — A-Z".
