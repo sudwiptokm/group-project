@@ -438,6 +438,7 @@ python compare.py                        # winner = lowest system_mean_waiting_t
 # Stage 2 — safety λ-sweep on the winner only
 caffeinate -i env ALGOS="<winner>" LAMBDAS="0.0 0.5 1.0" ./run_experiment.sh --skip-tune
 python compare.py                        # tradeoff table → logs/comparison.csv
+python plots.py                          # figures → results/*.png (bars + λ tradeoff)
 
 # Later, full-budget re-run (prefer a server) — see note below on --force:
 caffeinate -i env MODE=full ./run_experiment.sh --force && python compare.py
