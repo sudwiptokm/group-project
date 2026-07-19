@@ -92,7 +92,7 @@ run_phase() {
     log "[$name] $n jobs, up to $JOBS in parallel"
     # -0: records null-delimited. The runner splits label<TAB>command on the
     # first tab, so commands may contain spaces/flags freely.
-    JOBDIR="$JOBDIR" xargs -0 -P "$JOBS" -n1 -I REC bash -c '
+    JOBDIR="$JOBDIR" xargs -0 -P "$JOBS" -I REC bash -c '
         rec="$1"
         label="${rec%%	*}"        # up to first literal tab
         cmd="${rec#*	}"           # after first literal tab
