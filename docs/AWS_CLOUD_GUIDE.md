@@ -174,9 +174,13 @@ You're now SSH'd in. Run these on the cloud machine.
 > downloads its own standalone Python — no `apt`, no compiling).
 
 ```bash
-# 7.1 system packages (just git + tmux; Python comes from uv)
+# 7.1 system packages: git + tmux, PLUS the X11 shared libraries the SUMO
+# binary links against. A minimal Ubuntu server lacks these, and without them
+# every run dies instantly with:
+#   sumo: error while loading shared libraries: libXrender.so.1
 sudo apt-get update
-sudo apt-get install -y git tmux curl
+sudo apt-get install -y git tmux curl \
+    libxrender1 libxext6 libxfixes3 libxcursor1 libxrandr2 libxi6 libgl1
 
 # 7.2 get the code (public repo clone; for a private repo see note below)
 git clone https://github.com/sudwiptokm/group-project.git group_project
@@ -446,6 +450,7 @@ that something is still running.
 | `pip install` fails: "No matching distribution found for torch==2.8.0" | System Python too new for the pins. Use the `uv` + Python 3.11 method in §7 — don't use the system `python3`. |
 | `sumo` ModuleNotFoundError / `SUMO_HOME` empty | Same cause — deps didn't install because of the Python mismatch. Fix per §7 (uv/3.11), then re-run the `SUMO_HOME=...` line. |
 | `uv: command not found` after install | PATH not updated. `export PATH="$HOME/.local/bin:$PATH"` (or `source $HOME/.local/bin/env`). |
+| Every job `[FAIL]` in seconds; log shows `libXrender.so.1: cannot open shared object file` or `Could not connect in 1 tries` | Minimal Ubuntu lacks the X11 libs SUMO links. `sudo apt-get install -y libxrender1 libxext6 libxfixes3 libxcursor1 libxrandr2 libxi6 libgl1`, then rerun. |
 | Launch fails: "Max spot instance count exceeded" | Spot quota. Check Service Quotas (§5.8); if already ≥16, just retry; else use On-Demand. |
 | SSH "Connection timed out" | Security group not allowing your IP. §6 note — add SSH rule for **My IP**. |
 | SSH "Permission denied (publickey)" | Wrong username (use `ubuntu`) or wrong/loose key. `chmod 400 ~/.ssh/traffic-key.pem`. |
@@ -470,7 +475,8 @@ chmod 400 ~/.ssh/traffic-key.pem
 ssh -i ~/.ssh/traffic-key.pem ubuntu@PUBLIC_IP
 
 # --- on the cloud machine ---
-sudo apt-get update && sudo apt-get install -y git tmux curl
+sudo apt-get update && sudo apt-get install -y git tmux curl \
+    libxrender1 libxext6 libxfixes3 libxcursor1 libxrandr2 libxi6 libgl1
 git clone https://github.com/sudwiptokm/group-project.git group_project && cd group_project
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
