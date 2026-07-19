@@ -111,6 +111,9 @@ You do not need to master these — just recognize them when they appear:
 3. **Application and OS Image (AMI)**: search **Ubuntu**, pick
    **Ubuntu Server 24.04 LTS** (64-bit x86, free-tier-eligible label is fine —
    the AMI is free, the instance size is what costs).
+   - **The Python version does not actually matter** — §7 installs its own
+     Python 3.11 with `uv` regardless of what the AMI ships. So if you end up on
+     a newer Ubuntu (25.x/26.04) it's fine; just follow §7 as written.
 4. **Instance type**: click the dropdown, type `c7i.4xlarge`, select it.
    - Can't find it / "not available"? Use `c6i.4xlarge` (older, near-identical)
      or `m7i.4xlarge`. Any 16-vCPU instance works.
@@ -122,7 +125,14 @@ You do not need to master these — just recognize them when they appear:
 7. **Configure storage**: change the root volume from 8 GB to **30 GB**, type
    **gp3**.
 8. *(Optional, to use Spot pricing)* Expand **Advanced details** → **Purchase
-   option** → check **Spot**. Skip this for your first run.
+   option** → check **Request Spot Instances**. Skip for your first run.
+   - New accounts may show **"Max spot instance count exceeded"**. Check
+     **Service Quotas → EC2 → All Standard Spot Instance Requests** — if it's
+     already ≥ 16 you're fine (16 = the vCPUs of a 4xlarge); no increase needed,
+     just retry. If it's 0, either request an increase (minutes–hours) or use
+     On-Demand.
+   - **You cannot convert a running On-Demand instance to Spot** (or vice-versa).
+     The purchase option is fixed at launch — to switch, terminate and relaunch.
 9. Review the **Summary** panel on the right, then **Launch instance**.
 10. Click the instance ID link → you land on the instances list. Wait until
     **Instance state = Running** and **Status checks = 2/2 passed** (~1–2 min).
@@ -156,24 +166,43 @@ You do not need to master these — just recognize them when they appear:
 
 You're now SSH'd in. Run these on the cloud machine.
 
+> **Why we don't use the system Python.** `requirements.txt` was pinned on a Mac
+> with Python 3.9. Fresh Ubuntu AMIs ship a much newer Python (24.04 = 3.12,
+> 26.04 = 3.14) that has **no matching wheels** for pins like `torch==2.8.0`, so
+> `pip install` fails and nothing installs. The fix that works on *any* Ubuntu:
+> install an isolated Python 3.11 with **`uv`** (a fast package manager that
+> downloads its own standalone Python — no `apt`, no compiling).
+
 ```bash
-# 7.1 system packages
+# 7.1 system packages (just git + tmux; Python comes from uv)
 sudo apt-get update
-sudo apt-get install -y python3-venv python3-pip git tmux
+sudo apt-get install -y git tmux curl
 
 # 7.2 get the code (public repo clone; for a private repo see note below)
 git clone https://github.com/sudwiptokm/group-project.git group_project
 cd group_project
 
-# 7.3 python environment + dependencies (a few minutes)
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+# 7.3 install uv, then put it on PATH
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"       # if `uv` still "not found", also try: source $HOME/.local/bin/env
+uv --version                               # confirm it prints a version
 
-# 7.4 tell the tools where SUMO lives
+# 7.4 build a Python 3.11 venv and install deps (~30 s with uv)
+rm -rf venv
+uv python install 3.11
+uv venv --python 3.11 venv
+source venv/bin/activate
+uv pip install -r requirements.txt
+
+# 7.5 tell the tools where SUMO lives
 export SUMO_HOME=$(python -c 'import sumo; print(sumo.SUMO_HOME)')
+echo "$SUMO_HOME"                          # should print a path, not an error
 ```
+
+> If `torch==2.8.0` still shows "No matching distribution" even on 3.11, that
+> exact version was pulled from the index — relax just that pin:
+> `sed -i 's/^torch==.*/torch>=2.8,<2.10/' requirements.txt` then re-run
+> `uv pip install -r requirements.txt`. (SB3 2.7.1 runs fine on torch 2.9.)
 
 > **Private repo?** Easiest is to make the GitHub repo public temporarily, or
 > create a GitHub **Personal Access Token** and clone with
@@ -187,32 +216,45 @@ dropped connection kills a multi-hour run.
 ```bash
 tmux new -s train        # opens a persistent session
 
-# inside tmux:
+# inside tmux, re-set the three env things (a fresh tmux shell doesn't inherit them):
 source venv/bin/activate
+export PATH="$HOME/.local/bin:$PATH"
 export SUMO_HOME=$(python -c 'import sumo; print(sumo.SUMO_HOME)')
 MODE=full JOBS=16 ./run_parallel.sh
 ```
 
-- `MODE=full` = the publication-size budget. Use `MODE=overnight` for a quick
-  smaller run first if you want to test the whole flow cheaply.
+- `MODE=full` = the publication-size budget (~1 day). Use `MODE=overnight`
+  (~2–3 h) for a quick cheap end-to-end test first.
 - `JOBS=16` = run 16 jobs at once (matches the 16 vCPUs).
 
-**Detach** (leave it running, return to normal prompt): press `Ctrl-b`, release,
-then press `d`. You can now safely close your laptop or disconnect.
+**Confirm it started:** within ~2 min you should see lines like `[start] tune_dqn`.
+If you see an immediate `[FAIL]`, read the named log in `logs/parallel_<stamp>/`.
 
-**Reconnect later:** SSH back in (§6), then:
+### Now close your laptop and walk away
+1. **Detach** from tmux: press `Ctrl-b`, release, then `d`. The run keeps going
+   **on the cloud machine** — it does not depend on your laptop.
+2. You can now shut the laptop lid, disconnect wifi, or turn it off. The cloud
+   box keeps computing.
+
+> tmux is what makes this safe. Without it, an SSH disconnect (laptop sleep,
+> wifi drop) kills the run. Always launch inside `tmux new -s train`.
+
+### Check progress whenever you like
+From any machine with your key, laptop back on:
 ```bash
+ssh -i ~/.ssh/traffic-key.pem ubuntu@PUBLIC_IP
+
+# either watch live:
 tmux attach -t train
-```
-You'll see live progress. Detach again with `Ctrl-b` then `d`.
+#   ...then detach again with Ctrl-b then d
 
-### Watching progress
-The driver prints one line per job (`[start]`, `[ok]`, `[FAIL]`). Detailed
-per-job logs are in `logs/parallel_<timestamp>/`. To tail the driver log from a
-second SSH window:
-```bash
-tail -f logs/parallel_*/driver.log
+# or a quick glance without attaching:
+tail -n 30 ~/group_project/logs/parallel_*/driver.log
+grep -c '\[ok\]'   ~/group_project/logs/parallel_*/driver.log   # jobs finished
+grep    '\[FAIL\]' ~/group_project/logs/parallel_*/driver.log   # any failures
 ```
+You'll know it's finished when the driver log ends with `=== COMPARE ===`,
+`=== PLOTS ===`, then `done.`.
 
 ---
 
@@ -238,12 +280,22 @@ scp -i ~/.ssh/traffic-key.pem -r ubuntu@PUBLIC_IP:~/group_project/params   ./clo
 
 Now you have everything locally. Open `results/*.png` and `logs/comparison.csv`.
 
-### Spot interruption (only if you chose Spot in §5.8)
-If AWS reclaims a Spot instance mid-run, the instance stops. The script is
-**resumable**: launch a new instance, redo §7 setup, and run the exact same
-`MODE=full JOBS=16 ./run_parallel.sh` — it skips every result that already
-exists and continues. (For this to help, the disk must persist or you re-clone;
-simplest is just to let it redo missing pieces.)
+### Spot interruption — important if you ran on Spot
+If AWS reclaims a Spot instance, it **terminates** and, by default, its disk is
+**deleted** — so any `models/logs/params` not already copied off the box are
+lost. The `run_parallel.sh` script *is* resumable (it skips artifacts that
+already exist), but only if those artifacts still exist somewhere. On a ~24h
+`full` run with your laptop closed, a reclaim mid-run = start over.
+
+Your options, cheapest peace-of-mind first:
+- **Accept the risk.** If reclaimed, launch a fresh instance, redo §7, rerun the
+  same command. You lose the completed work but it's only compute time. Fine for
+  a student run; Spot reclaims of a common instance type are not that frequent.
+- **Use On-Demand instead** (§5.8, leave Spot unchecked). Never interrupted;
+  costs ~$17 for the full run vs ~$5–7 Spot. Simplest way to safely walk away.
+- **Auto-back-up from the box to S3.** Survives reclaim even with your laptop
+  off, because the copy runs *on the instance*. Requires creating an S3 bucket +
+  attaching an IAM role — more setup; ask if you want the steps.
 
 ---
 
@@ -302,6 +354,10 @@ that something is still running.
 
 | Symptom | Fix |
 |---------|-----|
+| `pip install` fails: "No matching distribution found for torch==2.8.0" | System Python too new for the pins. Use the `uv` + Python 3.11 method in §7 — don't use the system `python3`. |
+| `sumo` ModuleNotFoundError / `SUMO_HOME` empty | Same cause — deps didn't install because of the Python mismatch. Fix per §7 (uv/3.11), then re-run the `SUMO_HOME=...` line. |
+| `uv: command not found` after install | PATH not updated. `export PATH="$HOME/.local/bin:$PATH"` (or `source $HOME/.local/bin/env`). |
+| Launch fails: "Max spot instance count exceeded" | Spot quota. Check Service Quotas (§5.8); if already ≥16, just retry; else use On-Demand. |
 | SSH "Connection timed out" | Security group not allowing your IP. §6 note — add SSH rule for **My IP**. |
 | SSH "Permission denied (publickey)" | Wrong username (use `ubuntu`) or wrong/loose key. `chmod 400 ~/.ssh/traffic-key.pem`. |
 | "UNPROTECTED PRIVATE KEY FILE" | Run `chmod 400 ~/.ssh/traffic-key.pem`. |
@@ -325,13 +381,16 @@ chmod 400 ~/.ssh/traffic-key.pem
 ssh -i ~/.ssh/traffic-key.pem ubuntu@PUBLIC_IP
 
 # --- on the cloud machine ---
-sudo apt-get update && sudo apt-get install -y python3-venv python3-pip git tmux
+sudo apt-get update && sudo apt-get install -y git tmux curl
 git clone https://github.com/sudwiptokm/group-project.git group_project && cd group_project
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+rm -rf venv && uv python install 3.11 && uv venv --python 3.11 venv && source venv/bin/activate
+uv pip install -r requirements.txt
 export SUMO_HOME=$(python -c 'import sumo; print(sumo.SUMO_HOME)')
 tmux new -s train
-MODE=full JOBS=16 ./run_parallel.sh     # Ctrl-b then d to detach
+# inside tmux: source venv/bin/activate; export PATH="$HOME/.local/bin:$PATH"; export SUMO_HOME=...
+MODE=full JOBS=16 ./run_parallel.sh     # Ctrl-b then d to detach, then close laptop
 
 # --- back on your Mac, after it finishes ---
 scp -i ~/.ssh/traffic-key.pem -r ubuntu@PUBLIC_IP:~/group_project/results ./cloud_results
