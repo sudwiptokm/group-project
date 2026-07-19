@@ -294,8 +294,97 @@ Your options, cheapest peace-of-mind first:
 - **Use On-Demand instead** (§5.8, leave Spot unchecked). Never interrupted;
   costs ~$17 for the full run vs ~$5–7 Spot. Simplest way to safely walk away.
 - **Auto-back-up from the box to S3.** Survives reclaim even with your laptop
-  off, because the copy runs *on the instance*. Requires creating an S3 bucket +
-  attaching an IAM role — more setup; ask if you want the steps.
+  off, because the copy runs *on the instance*. Full walkthrough below.
+
+### Protect a Spot run with S3 auto-backup (recommended for `full`)
+
+**S3** = Amazon's file storage. The idea: a small loop on the instance copies
+your results to an S3 bucket every 10 minutes. If Spot reclaims the box, the
+results are safe in S3 — you relaunch, pull them back, and resume. Storage cost
+is pennies. Your training run keeps going through all of this; nothing here
+interrupts it.
+
+> Examples below use region **eu-west-2** (London). Use whichever region your
+> instance is in — keep it consistent.
+
+**Part A — Create the S3 bucket (browser).**
+1. Console search → **S3** → **Create bucket**.
+2. **Bucket name**: must be globally unique, lowercase, no spaces — e.g.
+   `sudwipto-traffic-backup-2607`. **Write it down.**
+3. **Region**: same as your instance (e.g. **EU (London) eu-west-2**).
+4. Leave the rest default (Block Public Access on is fine). → **Create bucket**.
+
+**Part B — Create an IAM role and attach it to the instance.**
+This lets the instance write to S3 with **no access keys stored on the box**.
+1. Console search → **IAM** → **Roles** → **Create role**.
+2. **Trusted entity**: **AWS service**. **Use case**: **EC2**. → **Next**.
+3. Check **AmazonS3FullAccess**. → **Next**.
+4. **Role name**: `ec2-s3-backup` → **Create role**.
+5. **EC2 → Instances** → check your instance → **Actions → Security → Modify IAM
+   role** → pick **ec2-s3-backup** → **Update IAM role**. Applies live — no
+   reboot, run unaffected.
+
+**Part C — On the instance, in a *second* tmux window** (leaves training alone):
+```bash
+tmux attach -t train
+# open a new window: press Ctrl-b then c
+```
+Then in that new window:
+```bash
+sudo snap install aws-cli --classic          # install AWS CLI
+aws --version
+
+aws sts get-caller-identity                   # proves the role works (prints an ARN, no keys)
+
+export BUCKET=sudwipto-traffic-backup-2607    # <-- your bucket name
+export AWS_DEFAULT_REGION=eu-west-2           # <-- your region
+aws s3 ls s3://$BUCKET                         # confirm bucket reachable
+```
+If `get-caller-identity` or `s3 ls` errors, the role probably isn't attached yet
+— wait 30 s and retry, or recheck Part B step 5.
+
+**Part D — Start the background backup loop.**
+```bash
+cat > ~/s3backup.sh <<'EOF'
+#!/usr/bin/env bash
+BUCKET="${BUCKET:?set BUCKET}"
+export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-eu-west-2}"
+cd ~/group_project || exit 1
+while true; do
+  for d in models logs params results; do
+    [ -d "$d" ] && aws s3 sync "$d" "s3://$BUCKET/$d" --only-show-errors
+  done
+  echo "[$(date '+%H:%M:%S')] synced to s3://$BUCKET"
+  sleep 600      # every 10 min
+done
+EOF
+chmod +x ~/s3backup.sh
+
+BUCKET=$BUCKET nohup ~/s3backup.sh > ~/s3backup.log 2>&1 &
+echo "backup PID $!"
+```
+Verify after ~10 min, then detach (`Ctrl-b` then `d`) and close the laptop:
+```bash
+tail ~/s3backup.log
+aws s3 ls s3://$BUCKET/logs/
+```
+
+**Recovery — if Spot reclaims the instance.**
+1. Launch a fresh Spot instance; redo §7 setup (uv/venv/deps).
+2. Attach the same **ec2-s3-backup** role (Part B step 5).
+3. Pull saved progress back down:
+   ```bash
+   export BUCKET=sudwipto-traffic-backup-2607
+   export AWS_DEFAULT_REGION=eu-west-2
+   cd ~/group_project
+   for d in models logs params results; do aws s3 sync s3://$BUCKET/$d $d; done
+   ```
+4. Restart the backup loop (Part D) and rerun `MODE=full JOBS=16 ./run_parallel.sh`
+   — it skips finished work and continues.
+
+> **Don't forget:** after the run, the S3 bucket keeps costing pennies/month.
+> When you've downloaded everything, empty and delete the bucket (S3 → select
+> bucket → **Empty**, then **Delete**).
 
 ---
 
