@@ -48,6 +48,23 @@ still under $20 on-demand, under $10 spot.
 
 Set up a **billing alarm** (§10) so you get emailed if spending crosses a limit.
 
+> **Reality check on `MODE=full` timing (measured, not estimated).** The
+> hyperparameter **tuning** phase is the slow part and it does **not** use all 16
+> cores — it runs one Optuna study per algorithm (4 jobs), each doing 30 trials
+> sequentially. On a c7i.4xlarge a trial measured **~70 min** (`~4250 s/it`), so
+> **tuning alone takes ~35 h** (all 4 algos run in parallel at a similar rate,
+> so wall-clock ≈ one algo's ~35 h, not 4×). The 16-core parallelism only kicks
+> in **after** tuning, during the train/eval phase. So budget **~1.5–2 days**
+> wall-clock for a real `full` run, not the ~24 h first implied — and on-demand
+> that is **~$25–35**, not ~$17. To see progress:
+> ```bash
+> # the % and trial count are on the last progress-bar line:
+> grep -oE '[0-9]+/30 \[[^]]*\]' logs/parallel_*/tune_dqn.log | tail -1
+> ```
+> If that's too slow/expensive, use `MODE=overnight` (fewer trials + shorter
+> steps → results in ~2–3 h) for a cheap end-to-end pass, and only pay for
+> `full` when you actually need publication-size numbers.
+
 ---
 
 ## 2. Create an AWS account (~15 min, one time)
@@ -459,6 +476,7 @@ that something is still running.
 | Run dies when laptop sleeps | You forgot `tmux`. Always start the run inside `tmux new -s train`. |
 | Jobs OOM-killed / machine freezes | Too many parallel jobs for the RAM. Lower it: `JOBS=8 ./run_parallel.sh`. |
 | Want to test cheaply first | `MODE=overnight JOBS=16 ./run_parallel.sh` — full flow, small budget. |
+| `full` run "stuck" at `[start] tune_*` for many hours; box mostly idle | Not stuck. Tuning is 4 sequential Optuna studies (1 per algo), ~70 min/trial × 30 trials ≈ **35 h**, and only uses 4 cores — the 16-core speedup is the *later* train/eval phase. Confirm progress: `grep -oE '[0-9]+/30 \[[^]]*\]' logs/parallel_*/tune_dqn.log \| tail -1`. Screen may show stale tmux scrollback; check the log file, not the frozen terminal. |
 | Lost the `.pem` key | You can't SSH back in. Terminate the instance and start over from §4. |
 
 ---
