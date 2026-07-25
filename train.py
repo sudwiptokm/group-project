@@ -8,8 +8,9 @@ changes (see algos.py). Keep the protocol identical across agents:
 
 Hyperparameters:
     - default: RL-Zoo-style defaults from algos.py
-    - tuned:   if params/<algo>.json exists (written by tune.py), it is loaded
-               automatically unless --defaults is passed.
+    - tuned:   if params/<algo>_<scenario>.json exists (written by tune.py) it is
+               loaded automatically unless --defaults is passed; falls back to the
+               legacy params/<algo>.json if the scenario-specific file is absent.
 
 Prereqs:
     SUMO_HOME set; pip install -r requirements.txt; intersection.net.xml built.
@@ -38,15 +39,26 @@ def _tag(scenario: str, lam: float) -> str:
     return f"{scenario}_lam{str(lam).replace('.', '')}"
 
 
-def load_params(algo: str, use_defaults: bool) -> dict:
-    """Tuned params/<algo>.json if present (and not overridden), else defaults."""
-    path = os.path.join(PARAMS_DIR, f"{algo}.json")
-    if not use_defaults and os.path.exists(path):
-        with open(path) as f:
-            saved = json.load(f)
-        print(f"[{algo}] using tuned hyperparameters from {path}")
-        # net_arch is stored as a name key by tune.py -> rebuild policy_kwargs
-        return _materialise(saved)
+def load_params(algo: str, use_defaults: bool, scenario: str = None) -> dict:
+    """Tuned params if present (and not overridden), else defaults.
+
+    Prefers the scenario-specific file params/<algo>_<scenario>.json (HPs tuned on
+    one demand regime don't transfer — see tune.py), falling back to the legacy
+    scenario-agnostic params/<algo>.json for backward compatibility.
+    """
+    if not use_defaults:
+        candidates = []
+        if scenario is not None:
+            candidates.append(f"{algo}_{scenario}.json")
+        candidates.append(f"{algo}.json")            # legacy fallback
+        for name in candidates:
+            path = os.path.join(PARAMS_DIR, name)
+            if os.path.exists(path):
+                with open(path) as f:
+                    saved = json.load(f)
+                print(f"[{algo}] using tuned hyperparameters from {path}")
+                # net_arch is stored as a name key by tune.py -> rebuild policy_kwargs
+                return _materialise(saved)
     print(f"[{algo}] using default hyperparameters")
     return ALGOS[algo]["defaults"]()
 
@@ -71,7 +83,7 @@ def train(algo: str, steps: int, seed: int, use_defaults: bool,
                    out_csv=f"logs/{algo}_{tag}_seed{seed}")
     env = Monitor(env)
 
-    params = load_params(algo, use_defaults)
+    params = load_params(algo, use_defaults, scenario=scenario)
     model = build(algo, env, params, seed=seed, tb_log="logs/tb")
     model.learn(total_timesteps=steps, progress_bar=True)
 
