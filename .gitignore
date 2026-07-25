@@ -14,3 +14,6 @@ models/
 logs/
 params/
 calibration_result.txt
+
+# Results scp'd down from the cloud box (cloud_results/ cloud_logs/ cloud_models/ ...)
+cloud_*/
