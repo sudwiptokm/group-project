@@ -112,14 +112,20 @@ log "MODE=$MODE JOBS=$JOBS SUMO_HOME=$SUMO_HOME"
 log "algos=[$ALGOS] scenarios=[$SCENARIOS] lambdas=[$LAMBDAS]"
 log "train_seeds=[$TRAIN_SEEDS] eval_seeds=[$EVAL_SEEDS] steps=$STEPS ref_seed=$REF_SEED"
 
-# ---- 1. tune (parallel over algos) ------------------------------------------
+# ---- 1. tune (parallel over algo x scenario) --------------------------------
+# HPs are tuned PER SCENARIO: peak-tuned params reused on offpeak collapse the
+# policy (offpeak's near-zero reward starves a peak-tuned tiny lr). Each study
+# writes params/<algo>_<scenario>.json, which train.py loads by scenario.
 if [ "$SKIP_TUNE" -eq 0 ]; then
     JOBFILE="$JOBDIR/jobs_tune"; : > "$JOBFILE"
     for a in $ALGOS; do
-        if [ "$FORCE" -eq 0 ] && [ -f "params/$a.json" ]; then
-            log "SKIP tune $a (params/$a.json exists)"; continue
-        fi
-        emit "tune_$a" "python tune.py --algo $a --trials $TUNE_TRIALS --steps $TUNE_STEPS --eval-seeds $TUNE_EVAL_SEEDS --scenario peak --lam 0.5"
+        for scenario in $SCENARIOS; do
+            pf="params/${a}_${scenario}.json"
+            if [ "$FORCE" -eq 0 ] && [ -f "$pf" ]; then
+                log "SKIP tune $a $scenario ($pf exists)"; continue
+            fi
+            emit "tune_${a}_${scenario}" "python tune.py --algo $a --trials $TUNE_TRIALS --steps $TUNE_STEPS --eval-seeds $TUNE_EVAL_SEEDS --scenario $scenario --lam 0.5"
+        done
     done
     run_phase tune "$JOBFILE"
 else

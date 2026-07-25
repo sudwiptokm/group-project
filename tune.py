@@ -4,7 +4,8 @@ Optuna hyperparameter search for one algorithm.
 For each trial: sample hyperparameters (search space in algos.py), train for a
 reduced budget on the train seed, then evaluate on held-out seeds and return the
 mean episode reward. Optuna maximises that. The best trial's hyperparameters are
-written to params/<algo>.json, which train.py then loads automatically for the
+written to params/<algo>_<scenario>.json (HPs must be tuned per scenario — see the
+out_path note below), which train.py then loads automatically by scenario for the
 full-budget, multi-seed runs used in the comparison.
 
 Keep the search cheap enough to run per algorithm:
@@ -105,7 +106,10 @@ def main():
     best = ALGOS[args.algo]["sample"](
         optuna.trial.FixedTrial(study.best_params)
     )
-    out_path = os.path.join(PARAMS_DIR, f"{args.algo}.json")
+    # Per-scenario file: HPs tuned on one demand regime (e.g. peak) collapse when
+    # reused on another (offpeak's near-zero reward starves a peak-tuned tiny lr →
+    # constant-action gridlock). train.py loads params/<algo>_<scenario>.json.
+    out_path = os.path.join(PARAMS_DIR, f"{args.algo}_{args.scenario}.json")
     with open(out_path, "w") as f:
         json.dump(_serialisable(best), f, indent=2)
 
