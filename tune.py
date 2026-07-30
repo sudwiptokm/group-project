@@ -22,9 +22,17 @@ import argparse
 import json
 import os
 import sys
+import time
 
 import numpy as np
 import optuna
+
+# Per-eval-episode wall-clock cap (seconds). A divergent policy can gridlock the
+# junction; with --time-to-teleport -1 the jam never clears and each SUMO step
+# slows to a crawl, so one bad trial can run for hours. If an eval episode
+# exceeds this, we abort it and prune the trial (a policy that can't finish an
+# episode in time is not one we want to select anyway). Override via env var.
+EVAL_WALL_CAP = float(os.environ.get("EVAL_WALL_CAP", "120"))
 
 from algos import ALGOS, build
 from env_common import make_env
@@ -41,18 +49,38 @@ def _serialisable(params: dict) -> dict:
     return out
 
 
-def _eval_reward(model, seed: int, scenario: str, lam: float) -> float:
+def _eval_waiting(model, seed: int, scenario: str, lam: float) -> float:
+    """Cumulative system waiting time over one eval episode (lower = better).
+
+    We tune on the *reported* metric (waiting time), NOT the shaped reward.
+    Reason: reward = diff_waiting - lam*safety. At offpeak the traffic is light
+    so the efficiency term is tiny and near-flat, leaving the safety term to
+    dominate. The reward-optimal policy is then "never switch phase" — no phase
+    changes means no conflicting movements means near-zero safety penalty — i.e.
+    a do-nothing gridlock (best safety, ~zero throughput). A2C, with a near-zero
+    entropy coefficient, converges straight to that degenerate optimum (the
+    ~1122s constant-action collapse). Optimising waiting time directly makes the
+    gridlock the *worst* possible score, so Optuna rejects it.
+
+    Wall-clock guarded: a gridlocked policy makes SUMO crawl, so we cap the
+    episode and raise TimeoutError (caught upstream -> prune) if it overruns.
+    """
     env = make_env(seed=seed, scenario=scenario, lam=lam, gui=False, out_csv=None)
     try:
         obs, _ = env.reset()
         done = False
-        total = 0.0
+        total_wait = 0.0
+        t0 = time.monotonic()
         while not done:
             action, _ = model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, _ = env.step(action)
-            total += reward
+            obs, reward, terminated, truncated, info = env.step(action)
+            total_wait += float(info.get("system_total_waiting_time", 0.0))
+            if time.monotonic() - t0 > EVAL_WALL_CAP:
+                raise TimeoutError(
+                    f"eval seed {seed} exceeded {EVAL_WALL_CAP}s (policy likely gridlocked)"
+                )
             done = terminated or truncated
-        return total
+        return total_wait
     finally:
         env.close()
 
@@ -71,10 +99,17 @@ def make_objective(algo: str, steps: int, train_seed: int, eval_seeds, scenario:
         finally:
             env.close()
 
-        rewards = [_eval_reward(model, s, scenario=scenario, lam=lam) for s in eval_seeds]
-        mean_r = float(np.mean(rewards))
-        trial.set_user_attr("eval_rewards", rewards)
-        return mean_r
+        # Objective = cumulative waiting time (lower = better); Optuna maximises,
+        # so return the negative. A TimeoutError from a gridlocked/crawling eval
+        # prunes the trial instead of letting it run for hours.
+        try:
+            waits = [_eval_waiting(model, s, scenario=scenario, lam=lam) for s in eval_seeds]
+        except TimeoutError as e:
+            print(f"trial {trial.number} pruned: {e}")
+            raise optuna.TrialPruned()
+        mean_wait = float(np.mean(waits))
+        trial.set_user_attr("eval_waiting", waits)
+        return -mean_wait
 
     return objective
 
@@ -113,7 +148,8 @@ def main():
     with open(out_path, "w") as f:
         json.dump(_serialisable(best), f, indent=2)
 
-    print(f"\nbest mean eval reward: {study.best_value:.1f}")
+    # best_value is -mean_waiting (we maximise the negative); report as waiting
+    print(f"\nbest mean eval waiting time: {-study.best_value:.1f}")
     print(f"best params written to {out_path}")
 
 

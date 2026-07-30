@@ -124,15 +124,27 @@ def _a2c_defaults() -> dict:
 
 
 def _a2c_sample(trial) -> dict:
+    # A2C is on-policy with no replay buffer -> high-variance updates that can
+    # diverge on light-traffic (offpeak) reward. Tight rollouts (n_steps=5) and
+    # a high lr let a single bad batch blow up the value function (offpeak a2c
+    # seed45 hit 73k waiting under the old wide space). Stabilise by: longer
+    # rollouts (drop 5/8), capping lr at 3e-4, and searching max_grad_norm so
+    # gradient clipping can rein in outlier batches.
+    #
+    # ent_coef FLOOR raised to 1e-3: with a near-zero entropy bonus (a prior tune
+    # picked ~1e-5) A2C collapses greedily onto a single constant action -> the
+    # ~1122s do-nothing gridlock. A meaningful entropy bonus keeps the policy
+    # stochastic and resists that deterministic collapse.
     net = trial.suggest_categorical("net_arch", list(_NET_ARCHS))
     return dict(
         policy=POLICY,
-        learning_rate=trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True),
-        n_steps=trial.suggest_categorical("n_steps", [5, 8, 16, 32]),
+        learning_rate=trial.suggest_float("learning_rate", 1e-5, 3e-4, log=True),
+        n_steps=trial.suggest_categorical("n_steps", [16, 32, 64]),
         gamma=trial.suggest_categorical("gamma", [0.95, 0.99, 0.995]),
         gae_lambda=trial.suggest_float("gae_lambda", 0.9, 1.0),
-        ent_coef=trial.suggest_float("ent_coef", 1e-8, 1e-1, log=True),
+        ent_coef=trial.suggest_float("ent_coef", 1e-3, 1e-1, log=True),
         vf_coef=trial.suggest_float("vf_coef", 0.25, 0.75),
+        max_grad_norm=trial.suggest_categorical("max_grad_norm", [0.3, 0.5, 1.0]),
         policy_kwargs=dict(net_arch=_NET_ARCHS[net]),
     )
 
