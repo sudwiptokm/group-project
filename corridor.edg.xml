@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Arterial (E<->W) + cross streets. 2 lanes, 13.89 m/s, width 3.5 to match
+     intersection.edg.xml so the sublane model + vtypes carry over. -->
+<edges>
+    <!-- arterial eastbound -->
+    <edge id="W_C1"  from="W"  to="C1" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="C1_C2" from="C1" to="C2" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="C2_C3" from="C2" to="C3" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="C3_E"  from="C3" to="E"  numLanes="2" speed="13.89" width="3.5"/>
+    <!-- arterial westbound -->
+    <edge id="E_C3"  from="E"  to="C3" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="C3_C2" from="C3" to="C2" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="C2_C1" from="C2" to="C1" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="C1_W"  from="C1" to="W"  numLanes="2" speed="13.89" width="3.5"/>
+
+    <!-- cross streets at C1 -->
+    <edge id="N1_C1" from="N1" to="C1" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="C1_N1" from="C1" to="N1" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="S1_C1" from="S1" to="C1" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="C1_S1" from="C1" to="S1" numLanes="2" speed="13.89" width="3.5"/>
+    <!-- cross streets at C2 -->
+    <edge id="N2_C2" from="N2" to="C2" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="C2_N2" from="C2" to="N2" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="S2_C2" from="S2" to="C2" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="C2_S2" from="C2" to="S2" numLanes="2" speed="13.89" width="3.5"/>
+    <!-- cross streets at C3 -->
+    <edge id="N3_C3" from="N3" to="C3" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="C3_N3" from="C3" to="N3" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="S3_C3" from="S3" to="C3" numLanes="2" speed="13.89" width="3.5"/>
+    <edge id="C3_S3" from="C3" to="S3" numLanes="2" speed="13.89" width="3.5"/>
+</edges>
