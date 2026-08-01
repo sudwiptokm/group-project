@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <routes>
+    <!-- Individual vTypes (moto/auto/car) come from vtypes.add.xml, loaded as a
+         SUMO additional file. The "mixed" distribution is defined inline here, just
+         as traffic.rou.xml does, so SUMO can resolve type="mixed" on the flows. -->
+    <vTypeDistribution id="mixed" vTypes="moto auto car" probabilities="0.60 0.25 0.15"/>
     <!-- Arterial through-traffic dominates so platoons form (green-wave gain). -->
     <route id="eb" edges="W_C1 C1_C2 C2_C3 C3_E"/>
     <route id="wb" edges="E_C3 C3_C2 C2_C1 C1_W"/>

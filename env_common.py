@@ -174,6 +174,8 @@ SCENARIO_ROUTES = {
     "base": "traffic.rou.xml",
     "peak": "traffic_peak.rou.xml",
     "offpeak": "traffic_offpeak.rou.xml",
+    "corridor_peak": "corridor_peak.rou.xml",
+    "corridor_offpeak": "corridor_offpeak.rou.xml",
 }
 
 
@@ -216,6 +218,41 @@ class SafetyLoggingEnv(SumoEnvironment):
         if self.metrics:
             self.metrics[-1].update(safety)
         return info
+
+
+def make_corridor_env(seed: int, scenario: str = "corridor_offpeak",
+                      lam: float = 0.0, gui: bool = False,
+                      out_csv: Optional[str] = None) -> "SafetyLoggingEnv":
+    """Multi-agent arterial corridor env (one agent per TLS: C1, C2, C3).
+
+    Same obs (PCUObservationFunction) and safety-λ reward as make_env, but
+    single_agent=False so every traffic light is its own agent.  The returned
+    object is a SafetyLoggingEnv (SumoEnvironment subclass) with the
+    multi-agent / PettingZoo-style interface exposed by sumo-rl when
+    single_agent=False.
+    """
+    # NOTE: keep this SUMO extra-cmd block in sync with make_env (only net_file
+    # and single_agent differ between the two factories).
+    extra = "--additional-files vtypes.add.xml --lateral-resolution 0.5"
+    if gui:
+        extra += " --gui-settings-file gui-settings.xml --start --quit-on-end"
+    return SafetyLoggingEnv(
+        net_file="corridor.net.xml",
+        route_file=SCENARIO_ROUTES[scenario],
+        observation_class=PCUObservationFunction,
+        use_gui=gui,
+        num_seconds=int(os.environ.get("EPISODE_SECONDS", "3600")),
+        delta_time=5,
+        yellow_time=3,
+        min_green=10,
+        max_green=60,
+        reward_fn=make_safety_reward_fn(lam),
+        single_agent=False,
+        sumo_seed=seed,
+        out_csv_name=out_csv,
+        sumo_warnings=False,
+        additional_sumo_cmd=extra,
+    )
 
 
 def make_env(seed: int, scenario: str = "base", lam: float = 0.0,
