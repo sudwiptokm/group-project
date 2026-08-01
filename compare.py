@@ -106,6 +106,14 @@ def main():
             if not base.empty:
                 rows.append(_summarise(base, "fixedtime", scenario, lam))
 
+    corridor_scenarios = ["corridor_peak", "corridor_offpeak"]
+    corridor_controllers = ["green_wave", "max_pressure"]
+    for scenario in corridor_scenarios:
+        for ctrl in corridor_controllers:
+            df = _run_means(args.logs, ctrl, scenario)
+            if not df.empty:
+                rows.append(_summarise(df, ctrl, scenario, lam="na"))
+
     if not rows:
         print("no eval CSVs found yet")
         return
