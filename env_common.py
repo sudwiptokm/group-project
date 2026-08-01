@@ -180,10 +180,12 @@ SCENARIO_ROUTES = {
 class SafetyLoggingEnv(SumoEnvironment):
     """SumoEnvironment that also records the raw safety sub-terms each step.
 
-    Adds three columns to the metrics CSV (summed over all traffic signals):
+    Adds three aggregate columns to the metrics CSV (summed over all traffic
+    signals), plus one per-signal column safety_total_<tlsid>:
         system_safety_brake     vulnerability-weighted emergency-braking events
         system_safety_exposure  vulnerability-weighted intersection exposure
         system_safety_total     brake + exposure (the raw, unscaled safety penalty)
+        safety_total_<tlsid>    brake + exposure for that one signal (corridor)
 
     These are the actual safety quantities the reward penalises — logged so
     compare.py / plots.py can report them instead of a proxy like stopped count.
@@ -191,15 +193,19 @@ class SafetyLoggingEnv(SumoEnvironment):
 
     def _get_safety_info(self) -> dict:
         brake = exposure = 0.0
-        for ts in self.traffic_signals.values():
+        per_agent = {}
+        for tls_id, ts in self.traffic_signals.items():
             b, e = _safety_components(ts)
             brake += b
             exposure += e
-        return {
+            per_agent[f"safety_total_{tls_id}"] = b + e
+        info = {
             "system_safety_brake": brake,
             "system_safety_exposure": exposure,
             "system_safety_total": brake + exposure,
         }
+        info.update(per_agent)
+        return info
 
     def _compute_info(self):
         # super() builds the standard info dict and appends it to self.metrics;
