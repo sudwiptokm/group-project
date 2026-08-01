@@ -1,7 +1,10 @@
 """_get_safety_info must keep the network aggregate AND add a per-TLS total."""
+import pytest
+
 import env_common as ec
 
 
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptionWarning")
 def test_per_agent_safety_columns(monkeypatch):
     signals = {"C1": object(), "C2": object()}
     fake = {id(signals["C1"]): (1.0, 0.0), id(signals["C2"]): (0.0, 2.0)}
