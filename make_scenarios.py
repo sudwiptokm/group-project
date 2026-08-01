@@ -8,6 +8,12 @@ import re
 SRC = "traffic.rou.xml"
 FACTORS = {"traffic_peak.rou.xml": 1.5, "traffic_offpeak.rou.xml": 0.5}
 
+CORRIDOR_SRC = "corridor.rou.xml"
+CORRIDOR_FACTORS = {
+    "corridor_peak.rou.xml": 1.5,
+    "corridor_offpeak.rou.xml": 0.5,
+}
+
 _FLOW = re.compile(r'vehsPerHour="([0-9.]+)"')
 
 
@@ -26,3 +32,5 @@ def scale_file(src: str, dst: str, factor: float) -> None:
 if __name__ == "__main__":
     for dst, factor in FACTORS.items():
         scale_file(SRC, dst, factor)
+    for dst, factor in CORRIDOR_FACTORS.items():
+        scale_file(CORRIDOR_SRC, dst, factor)
