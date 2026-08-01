@@ -245,6 +245,54 @@ Monitor training:
 tensorboard --logdir logs/tb
 ```
 
+## Corridor (SP1)
+
+SP1 extends the single-intersection study to a **3-signal arterial corridor** (traffic
+lights `C1`, `C2`, `C3`) as a first step toward multi-intersection generalisation.
+SP2 (independent multi-agent RL on the corridor) and SP3 (centralised-training /
+decentralised-execution) are not yet implemented.
+
+### Network
+
+`corridor.net.xml` is committed; rebuild only if `corridor.nod.xml` or `corridor.edg.xml` change:
+
+```bash
+netconvert --node-files corridor.nod.xml --edge-files corridor.edg.xml \
+  --output-file corridor.net.xml \
+  --tls.guess-signals true --tls.default-type static --no-turnarounds true
+```
+
+### Demand
+
+`make_scenarios.py` writes corridor demand alongside the single-intersection files:
+
+```bash
+python make_scenarios.py   # writes corridor_peak.rou.xml + corridor_offpeak.rou.xml
+```
+
+### Non-RL baselines
+
+Two coordinated controllers are available via `corridor_baseline.py`:
+
+- `green_wave` — fixed-time phases with coordinated progression offsets
+- `max_pressure` — decentralised pressure-based switching (no coordination)
+
+```bash
+python corridor_baseline.py --scenario corridor_peak --controller green_wave --seed 0
+python corridor_baseline.py --scenario corridor_peak --controller max_pressure --seed 0
+```
+
+Both write eval CSVs to `logs/` in the same schema as the single-intersection eval CSVs.
+Running `python compare.py` afterwards includes `corridor_peak` / `corridor_offpeak` rows
+alongside the single-intersection comparison table.
+
+### Multi-agent env
+
+`make_corridor_env` in `env_common.py` returns a `SafetyLoggingEnv` with
+`single_agent=False`, giving a PettingZoo-style multi-agent interface with one agent per
+traffic light (`C1`, `C2`, `C3`). It reuses the same PCU observation
+(`PCUObservationFunction`) and safety-λ reward as the single-intersection `make_env`.
+
 ## Evaluation
 
 Evaluate a saved model on a held-out seed (pass the matching `--algo`):
