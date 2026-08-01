@@ -39,10 +39,13 @@ def _max_pressure_actions(env):
                 for i in range(len(state))
                 if i < len(links) and links[i] and state[i] in "Gg"
             }
-            pressures[p] = sum(
+            incoming = sum(
                 ts.sumo.lane.getLastStepHaltingNumber(lane)
                 for lane in served_lanes
             )
+            # downstream queue approximated as 0 (corridor exits drain freely);
+            # use the shared pure helper so the pressure definition lives in one place
+            pressures[p] = cc.movement_pressure(incoming, outgoing_queue=0.0)
         actions[ts_id] = cc.max_pressure_phase(pressures)
     return actions
 
@@ -65,6 +68,9 @@ def run(scenario: str, controller: str, seed: int) -> str:
             actions = {}
             for i, ts_id in enumerate(env.ts_ids):
                 ngp = env.traffic_signals[ts_id].num_green_phases
+                # offsets are quantised to whole decision steps: at delta_time=5s a
+                # 14.4s offset becomes 2 steps (10s). This coarsens the green wave —
+                # a known limitation of the discrete decision interval, not a bug.
                 shifted = step - int(offsets[i] // env.delta_time)
                 actions[ts_id] = max(shifted, 0) % ngp
         else:
