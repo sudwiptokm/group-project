@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 3-signal arterial corridor. C1,C2,C3 are traffic lights 200m apart on y=0.
+     W/E are arterial ends; N*/S* are cross-street ends. -->
+<nodes>
+    <node id="W"  x="-200" y="0"    type="priority"/>
+    <node id="C1" x="0"    y="0"    type="traffic_light"/>
+    <node id="C2" x="200"  y="0"    type="traffic_light"/>
+    <node id="C3" x="400"  y="0"    type="traffic_light"/>
+    <node id="E"  x="600"  y="0"    type="priority"/>
+
+    <node id="N1" x="0"    y="200"  type="priority"/>
+    <node id="S1" x="0"    y="-200" type="priority"/>
+    <node id="N2" x="200"  y="200"  type="priority"/>
+    <node id="S2" x="200"  y="-200" type="priority"/>
+    <node id="N3" x="400"  y="200"  type="priority"/>
+    <node id="S3" x="400"  y="-200" type="priority"/>
+</nodes>
