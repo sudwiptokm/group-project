@@ -114,6 +114,13 @@ def main():
             if not df.empty:
                 rows.append(_summarise(df, ctrl, scenario, lam="na"))
 
+    corridor_lambdas = ["00", "05", "10"]
+    for scenario in corridor_scenarios:
+        for lam in corridor_lambdas:
+            df = _run_means(args.logs, "ippo", scenario, lam=lam)
+            if not df.empty:
+                rows.append(_summarise(df, "ippo", scenario, lam))
+
     if not rows:
         print("no eval CSVs found yet")
         return

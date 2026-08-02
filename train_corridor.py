@@ -131,11 +131,48 @@ def train(scenario: str, lam: float, seed: int, steps: int) -> str:
     return path
 
 
+def evaluate(model_path: str, scenario: str, lam: float, seed: int) -> str:
+    """Run the trained shared policy greedily on a held-out seed, writing an eval
+    CSV in the SafetyLoggingEnv format so compare.py reads it as `ippo`."""
+    os.makedirs("logs", exist_ok=True)
+    tag = f"{scenario}_lam{str(lam).replace('.', '')}_seed{seed}"
+    out_csv = f"logs/eval_ippo_{tag}"
+    env = make_corridor_env(seed=seed, scenario=scenario, lam=lam, out_csv=out_csv)
+    obs_dim, act_dim = _obs_act_dims(env)
+    policy = pc.ActorCritic(obs_dim, act_dim, hidden=_hp()["hidden"])
+    policy.load_state_dict(torch.load(model_path, weights_only=True))
+    policy.eval()
+
+    obs = env.reset()
+    done = False
+    while not done:
+        ids = env.ts_ids
+        obs_t = torch.as_tensor(np.stack([obs[i] for i in ids]), dtype=torch.float32)
+        with torch.no_grad():
+            logits = policy.actor(obs_t)          # greedy: argmax, no sampling
+        actions = {i: int(a) for i, a in zip(ids, logits.argmax(dim=-1))}
+        obs, _, dones, _ = env.step(actions)
+        done = dones["__all__"]
+    env.save_csv(env.out_csv_name, env.episode)
+    env.close()
+    out = f"logs/eval_ippo_{tag}_conn{env.label}_ep{env.episode}.csv"
+    print(f"ippo eval written: {out}")
+    return out
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--scenario", default="corridor_offpeak")
-    parser.add_argument("--lam", type=float, default=0.5)
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--steps", type=int, default=100_000)
-    args = parser.parse_args()
-    train(args.scenario, args.lam, args.seed, args.steps)
+    if not os.environ.get("SUMO_HOME"):
+        raise SystemExit("SUMO_HOME not set")
+    p = argparse.ArgumentParser()
+    p.add_argument("--scenario", default="corridor_offpeak",
+                   choices=["corridor_peak", "corridor_offpeak"])
+    p.add_argument("--lam", type=float, default=0.5)
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--steps", type=int, default=100_000)
+    p.add_argument("--eval", type=str, default=None,
+                   help="path to a saved model to evaluate instead of training")
+    args = p.parse_args()
+    if args.eval:
+        evaluate(args.eval, args.scenario, args.lam, args.seed)
+    else:
+        train(args.scenario, args.lam, args.seed, args.steps)
