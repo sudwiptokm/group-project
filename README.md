@@ -317,7 +317,8 @@ state.
 ### Train, evaluate, compare
 
 ```bash
-# train (100 k steps ≈ 15 min on Apple Silicon)
+# train (--steps counts ENV-steps, matching SB3 total_timesteps; each env-step
+# yields one transition per signal, so the shared policy sees 3x that many samples)
 python train_corridor.py --scenario corridor_peak --lam 0.5 --seed 0 --steps 100000
 
 # evaluate on a held-out seed

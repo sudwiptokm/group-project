@@ -40,6 +40,12 @@ def _obs_act_dims(env):
     return env.observation_spaces(tid).shape[0], env.action_spaces(tid).n
 
 
+def _tag(scenario: str, lam: float, seed: int) -> str:
+    """Filename tag shared by train (model) and evaluate (eval CSV) so the two
+    never diverge; must match compare.py's `eval_ippo_<scenario>_lam<lam>_seed*` glob."""
+    return f"{scenario}_lam{str(lam).replace('.', '')}_seed{seed}"
+
+
 def collect_rollout(env, policy, obs, n_steps):
     """Step the env n_steps, storing a SEPARATE temporal buffer per agent (so GAE
     stays within each agent's trajectory). Returns (per_agent_buffers, trailing_obs)."""
@@ -67,13 +73,22 @@ def collect_rollout(env, policy, obs, n_steps):
     return per, obs
 
 
-def update(policy, optim, per, hp):
+def update(policy, optim, per, hp, last_obs):
     """One PPO update: per-agent GAE, then concatenated minibatch updates over the
-    shared policy. Returns the last minibatch info dict."""
+    shared policy. Returns the last minibatch info dict.
+
+    last_obs is the trailing observation dict from the rollout; each agent's GAE
+    bootstraps V(s_T) from it so truncated (mid-episode) rollouts are not biased by
+    an implicit V=0. The per-step done flag masks this bootstrap when the final
+    collected step was actually terminal.
+    """
     all_obs, all_act, all_logp, all_adv, all_ret = [], [], [], [], []
-    for b in per.values():
+    for agent, b in per.items():
+        with torch.no_grad():
+            lv = float(policy.value(
+                torch.as_tensor(last_obs[agent], dtype=torch.float32)))
         adv, ret = pc.compute_gae(b["rew"], b["val"], b["done"],
-                                  hp["gamma"], hp["gae_lambda"])
+                                  hp["gamma"], hp["gae_lambda"], last_value=lv)
         all_obs += b["obs"]
         all_act += b["act"]
         all_logp += b["logp"]
@@ -101,6 +116,8 @@ def update(policy, optim, per, hp):
                                      ent_coef=hp["ent_coef"])
             optim.zero_grad()
             loss.backward()
+            # match SB3's default max_grad_norm=0.5 (the HPs were tuned under it)
+            torch.nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
             optim.step()
             last_info = info
     return last_info
@@ -116,17 +133,18 @@ def train(scenario: str, lam: float, seed: int, steps: int) -> str:
     optim = torch.optim.Adam(policy.parameters(), lr=hp["lr"])
 
     obs = env.reset()
-    collected = 0
+    collected = 0  # counted in ENV-steps (matches SB3 total_timesteps semantics)
     while collected < steps:
         per, obs = collect_rollout(env, policy, obs, hp["n_steps"])
-        update(policy, optim, per, hp)
-        collected += hp["n_steps"] * len(env.ts_ids)
+        update(policy, optim, per, hp, last_obs=obs)
+        collected += hp["n_steps"]
     env.close()
 
     os.makedirs("models", exist_ok=True)
-    tag = f"{scenario}_lam{str(lam).replace('.', '')}_seed{seed}"
-    path = f"models/ippo_{tag}.pt"
-    torch.save(policy.state_dict(), path)
+    path = f"models/ippo_{_tag(scenario, lam, seed)}.pt"
+    # store the architecture alongside the weights so evaluate() rebuilds the exact
+    # net even if cloud_params/ppo.json (gitignored) later changes.
+    torch.save({"state_dict": policy.state_dict(), "hidden": hp["hidden"]}, path)
     print(f"ippo model saved: {path}")
     return path
 
@@ -135,12 +153,18 @@ def evaluate(model_path: str, scenario: str, lam: float, seed: int) -> str:
     """Run the trained shared policy greedily on a held-out seed, writing an eval
     CSV in the SafetyLoggingEnv format so compare.py reads it as `ippo`."""
     os.makedirs("logs", exist_ok=True)
-    tag = f"{scenario}_lam{str(lam).replace('.', '')}_seed{seed}"
+    tag = _tag(scenario, lam, seed)
     out_csv = f"logs/eval_ippo_{tag}"
     env = make_corridor_env(seed=seed, scenario=scenario, lam=lam, out_csv=out_csv)
     obs_dim, act_dim = _obs_act_dims(env)
-    policy = pc.ActorCritic(obs_dim, act_dim, hidden=_hp()["hidden"])
-    policy.load_state_dict(torch.load(model_path, weights_only=True))
+    # checkpoints save {"state_dict", "hidden"}; tolerate a bare state_dict too
+    ckpt = torch.load(model_path, weights_only=True)
+    if isinstance(ckpt, dict) and "state_dict" in ckpt:
+        hidden, state = tuple(ckpt["hidden"]), ckpt["state_dict"]
+    else:
+        hidden, state = _hp()["hidden"], ckpt
+    policy = pc.ActorCritic(obs_dim, act_dim, hidden=hidden)
+    policy.load_state_dict(state)
     policy.eval()
 
     obs = env.reset()

@@ -40,7 +40,9 @@ def test_update_changes_policy_parameters():
           "batch_size": 16, "clip_range": 0.2, "ent_coef": 0.0}
 
     before = copy.deepcopy(policy.state_dict())
-    tc.update(policy, optim, _synthetic_per_agent_buffer(obs_dim), hp)
+    per = _synthetic_per_agent_buffer(obs_dim)
+    last_obs = {a: torch.randn(obs_dim) for a in per}  # bootstrap obs per agent
+    tc.update(policy, optim, per, hp, last_obs)
     after = policy.state_dict()
 
     changed = any(not torch.equal(before[k], after[k]) for k in before)
