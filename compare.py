@@ -114,12 +114,13 @@ def main():
             if not df.empty:
                 rows.append(_summarise(df, ctrl, scenario, lam="na"))
 
-    corridor_lambdas = ["00", "05", "10"]
+    corridor_rl = ["ippo", "mappo"]
     for scenario in corridor_scenarios:
-        for lam in corridor_lambdas:
-            df = _run_means(args.logs, "ippo", scenario, lam=lam)
-            if not df.empty:
-                rows.append(_summarise(df, "ippo", scenario, lam))
+        for entity in corridor_rl:
+            for lam in lambdas:  # same λ filename tags as the single-intersection algos
+                df = _run_means(args.logs, entity, scenario, lam=lam)
+                if not df.empty:
+                    rows.append(_summarise(df, entity, scenario, lam))
 
     if not rows:
         print("no eval CSVs found yet")

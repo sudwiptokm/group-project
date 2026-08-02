@@ -353,13 +353,50 @@ source venv/bin/activate
 EPISODE_SECONDS=200 pytest tests/test_train_corridor.py::test_ippo_learns_vs_untrained -v -m slow
 ```
 
-### SP3 — MAPPO (next step)
+## Corridor RL — MAPPO (SP3)
 
-MAPPO replaces the critic's input from local obs to a **joint state** (concatenation of
-all agents' observations). The actor and the PPO training loop in `train_corridor.py`
-are unchanged — only `ActorCritic` in `ppo_core.py` needs a `state_dim` argument on
-its value head. The pluggable-critic seam (`state_dim` kwarg, already accepted by
-`ActorCritic.__init__`) is already in place; SP3 wires the global state through it.
+**Multi-Agent PPO (MAPPO)** uses the same `train_corridor.py` loop as IPPO with one
+difference: each agent's critic receives the **joint state** — a concatenation of all
+three signals' local observations (3 × 19 = 57-dim) — instead of its own local
+observation alone. The actor is unchanged and still operates on each agent's local 19-dim
+obs (decentralised execution). This is the standard *centralised training, decentralised
+execution* (CTDE) paradigm.
+
+Because IPPO and MAPPO share every hyperparameter and differ only in the critic input,
+`compare.py` can directly attribute any performance gap to coordination signal rather
+than implementation differences.
+
+### Train, evaluate, compare
+
+```bash
+python train_corridor.py --algo mappo --scenario corridor_peak --lam 0.5 --seed 0 --steps 100000
+
+# evaluate on a held-out seed
+python train_corridor.py --algo mappo --scenario corridor_peak --lam 0.5 --seed 42 \
+    --eval models/mappo_corridor_peak_lam05_seed0.pt
+
+# ranks mappo vs ippo vs green_wave / max_pressure
+python compare.py
+```
+
+Run both scenarios and multiple seeds the same way as IPPO (substitute `--algo mappo`).
+
+### Smoke test
+
+`tests/test_train_corridor.py::test_mappo_trains_and_evaluates` runs a 600-step
+centralised-critic training on `corridor_offpeak` and checks that the saved checkpoint
+filename contains `mappo` and that the eval CSV reports positive mean speed:
+
+```bash
+source venv/bin/activate
+EPISODE_SECONDS=200 pytest tests/test_train_corridor.py::test_mappo_trains_and_evaluates -v -m slow
+```
+
+### Note on results
+
+The full MAPPO-vs-IPPO statistical comparison (multiple seeds, both scenarios, all λ
+values) is an SP5 experiment. The SP3 delivery proves the mechanism works end-to-end and
+enrolls MAPPO in the `compare.py` ranking table.
 
 ## Evaluation
 
