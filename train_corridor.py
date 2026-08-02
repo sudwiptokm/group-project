@@ -46,6 +46,17 @@ def _tag(scenario: str, lam: float, seed: int) -> str:
     return f"{scenario}_lam{str(lam).replace('.', '')}_seed{seed}"
 
 
+def build_states(obs, ts_ids, centralized):
+    """Per-agent critic state. IPPO (centralized=False): each agent's own local
+    observation. MAPPO (centralized=True): the joint state — all agents' local
+    observations concatenated in ts_ids order — shared by every agent.
+    """
+    if not centralized:
+        return {i: obs[i] for i in ts_ids}
+    joint = np.concatenate([obs[i] for i in ts_ids])
+    return {i: joint for i in ts_ids}
+
+
 def collect_rollout(env, policy, obs, n_steps):
     """Step the env n_steps, storing a SEPARATE temporal buffer per agent (so GAE
     stays within each agent's trajectory). Returns (per_agent_buffers, trailing_obs)."""
