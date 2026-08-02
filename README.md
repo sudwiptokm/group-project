@@ -293,6 +293,73 @@ alongside the single-intersection comparison table.
 traffic light (`C1`, `C2`, `C3`). It reuses the same PCU observation
 (`PCUObservationFunction`) and safety-λ reward as the single-intersection `make_env`.
 
+## Corridor RL — IPPO (SP2)
+
+**Independent PPO (IPPO)** trains a single shared policy across all three corridor
+agents (`C1`, `C2`, `C3`). Each agent runs its own PPO rollout with per-agent GAE,
+then all transitions are pooled into one minibatch update of the shared actor-critic.
+This is *parameter sharing*, not coordination — each agent observes only its own local
+state.
+
+### Implementation
+
+- **`ppo_core.py`** — pure-PyTorch hand-rolled PPO: `ActorCritic` (MLP actor + value
+  head), `compute_gae` (per-agent advantage), `ppo_loss` (clipped surrogate +
+  value + entropy).
+- **`train_corridor.py`** — corridor-specific train/eval loop: `train(scenario, lam,
+  seed, steps)` collects multi-agent rollouts, runs `update()`, and saves
+  `models/ippo_<tag>.pt`. `evaluate(model_path, scenario, lam, seed)` runs the greedy
+  policy and writes an eval CSV in the same schema as `baseline.py` and `train.py`.
+- **Hyperparameters** — reused directly from `cloud_params/ppo.json` (single-intersection
+  Optuna-tuned PPO params). This is a disclosed design choice: the corridor has the same
+  local obs/action space per agent, so the HP transfer is well-motivated.
+
+### Train, evaluate, compare
+
+```bash
+# train (100 k steps ≈ 15 min on Apple Silicon)
+python train_corridor.py --scenario corridor_peak --lam 0.5 --seed 0 --steps 100000
+
+# evaluate on a held-out seed
+python train_corridor.py --scenario corridor_peak --lam 0.5 --seed 42 \
+    --eval models/ippo_corridor_peak_lam05_seed0.pt
+
+# rank ippo vs green_wave / max_pressure
+python compare.py
+```
+
+Run both scenarios and seeds:
+
+```bash
+for scenario in corridor_peak corridor_offpeak; do
+  for seed in 0 1 2; do
+    python train_corridor.py --scenario $scenario --lam 0.5 --seed $seed --steps 100000
+    python train_corridor.py --scenario $scenario --lam 0.5 --seed 42 \
+        --eval models/ippo_${scenario}_lam05_seed${seed}.pt
+  done
+done
+python compare.py
+```
+
+### Learning-check gate
+
+`tests/test_train_corridor.py::test_ippo_learns_vs_untrained` verifies that a
+2000-step trained policy is not worse than a random-init (untrained) policy on mean
+waiting time. Run it with:
+
+```bash
+source venv/bin/activate
+EPISODE_SECONDS=200 pytest tests/test_train_corridor.py::test_ippo_learns_vs_untrained -v -m slow
+```
+
+### SP3 — MAPPO (next step)
+
+MAPPO replaces the critic's input from local obs to a **joint state** (concatenation of
+all agents' observations). The actor and the PPO training loop in `train_corridor.py`
+are unchanged — only `ActorCritic` in `ppo_core.py` needs a `state_dim` argument on
+its value head. The pluggable-critic seam (`state_dim` kwarg, already accepted by
+`ActorCritic.__init__`) is already in place; SP3 wires the global state through it.
+
 ## Evaluation
 
 Evaluate a saved model on a held-out seed (pass the matching `--algo`):
