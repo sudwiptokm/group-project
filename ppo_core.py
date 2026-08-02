@@ -46,3 +46,25 @@ class ActorCritic(nn.Module):
         dist = self.policy(obs)
         action = dist.sample()
         return action, dist.log_prob(action)
+
+
+def compute_gae(rewards, values, dones, gamma: float, lam: float,
+                last_value: float = 0.0):
+    """Generalised advantage estimation over one rollout segment.
+
+    rewards/values/dones are equal-length sequences; values[t] = V(s_t);
+    dones[t] = 1.0 if s_{t+1} is terminal. last_value bootstraps V(s_T) for the
+    final non-terminal step. Returns (advantages, returns) as plain float lists.
+    """
+    n = len(rewards)
+    advantages = [0.0] * n
+    gae = 0.0
+    next_value = last_value
+    for t in reversed(range(n)):
+        non_terminal = 1.0 - dones[t]
+        delta = rewards[t] + gamma * next_value * non_terminal - values[t]
+        gae = delta + gamma * lam * non_terminal * gae
+        advantages[t] = gae
+        next_value = values[t]
+    returns = [a + v for a, v in zip(advantages, values)]
+    return advantages, returns
