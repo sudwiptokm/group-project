@@ -29,3 +29,23 @@ def test_critic_state_dim_can_differ_from_obs_dim():
     assert ac.value(state).shape == (4,)
     # actor still consumes local obs of width 19
     assert ac.policy(torch.zeros((4, 19))).logits.shape == (4, 2)
+
+
+def test_compute_gae_known_values():
+    # rewards all 1, zero values, last step terminal, gamma=lam=1
+    # hand-derivation: adv = [3, 2, 1], returns = adv + values = [3, 2, 1]
+    adv, ret = pc.compute_gae(
+        rewards=[1.0, 1.0, 1.0], values=[0.0, 0.0, 0.0],
+        dones=[0.0, 0.0, 1.0], gamma=1.0, lam=1.0, last_value=0.0)
+    assert adv == [3.0, 2.0, 1.0]
+    assert ret == [3.0, 2.0, 1.0]
+
+
+def test_compute_gae_terminal_blocks_bootstrap():
+    # a terminal at t=0 must stop the value bootstrap from leaking backward
+    adv, ret = pc.compute_gae(
+        rewards=[5.0], values=[2.0], dones=[1.0],
+        gamma=0.99, lam=0.95, last_value=100.0)
+    # delta = 5 + 0.99*100*(1-1) - 2 = 3 ; gae = 3
+    assert abs(adv[0] - 3.0) < 1e-9
+    assert abs(ret[0] - 5.0) < 1e-9
