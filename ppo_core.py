@@ -68,3 +68,24 @@ def compute_gae(rewards, values, dones, gamma: float, lam: float,
         next_value = values[t]
     returns = [a + v for a, v in zip(advantages, values)]
     return advantages, returns
+
+
+def ppo_loss(dist, actions, old_log_prob, advantages, values, returns,
+             clip: float, ent_coef: float, vf_coef: float = 0.5):
+    """PPO clipped surrogate + value loss - entropy bonus.
+
+    dist: current Categorical over `actions`. Returns (loss, info_dict).
+    """
+    log_prob = dist.log_prob(actions)
+    ratio = torch.exp(log_prob - old_log_prob)
+    unclipped = ratio * advantages
+    clipped = torch.clamp(ratio, 1.0 - clip, 1.0 + clip) * advantages
+    policy_loss = -torch.min(unclipped, clipped).mean()
+    value_loss = ((values - returns) ** 2).mean()
+    entropy = dist.entropy().mean()
+    loss = policy_loss + vf_coef * value_loss - ent_coef * entropy
+    return loss, {
+        "pg": policy_loss.item(),
+        "vf": value_loss.item(),
+        "ent": entropy.item(),
+    }
