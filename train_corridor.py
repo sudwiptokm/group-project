@@ -1,0 +1,141 @@
+"""Parameter-shared IPPO on the multi-agent corridor env.
+
+Custom PPO (ppo_core) trained by pooling all agents' transitions into one shared
+policy. GAE is computed PER AGENT (each agent has its own temporal trajectory),
+then transitions are concatenated across agents for the shared update. Same
+actor/critic loop SP3's MAPPO will extend (critic input only).
+"""
+import argparse
+import json
+import os
+
+import numpy as np
+import torch
+
+import ppo_core as pc
+from env_common import make_corridor_env
+
+PARAMS_FILE = "cloud_params/ppo.json"
+
+
+def _hp() -> dict:
+    """Reused single-intersection PPO hyperparameters (disclosed limitation)."""
+    with open(PARAMS_FILE) as fh:
+        p = json.load(fh)
+    return {
+        "lr": p["learning_rate"],
+        "n_steps": p["n_steps"],
+        "batch_size": p["batch_size"],
+        "n_epochs": p["n_epochs"],
+        "gamma": p["gamma"],
+        "gae_lambda": p["gae_lambda"],
+        "clip_range": p["clip_range"],
+        "ent_coef": p["ent_coef"],
+        "hidden": tuple(p["net_arch"]),
+    }
+
+
+def _obs_act_dims(env):
+    tid = env.ts_ids[0]
+    return env.observation_spaces(tid).shape[0], env.action_spaces(tid).n
+
+
+def collect_rollout(env, policy, obs, n_steps):
+    """Step the env n_steps, storing a SEPARATE temporal buffer per agent (so GAE
+    stays within each agent's trajectory). Returns (per_agent_buffers, trailing_obs)."""
+    ids = env.ts_ids
+    per = {i: {"obs": [], "act": [], "logp": [], "rew": [], "val": [], "done": []}
+           for i in ids}
+    for _ in range(n_steps):
+        obs_t = torch.as_tensor(np.stack([obs[i] for i in ids]), dtype=torch.float32)
+        with torch.no_grad():
+            actions_t, logp_t = policy.act(obs_t)
+            vals_t = policy.value(obs_t)
+        actions = {i: int(a) for i, a in zip(ids, actions_t)}
+        nobs, rewards, dones, _ = env.step(actions)
+        done_all = float(dones["__all__"])
+        for k, i in enumerate(ids):
+            per[i]["obs"].append(obs_t[k])
+            per[i]["act"].append(actions_t[k])
+            per[i]["logp"].append(logp_t[k])
+            per[i]["val"].append(float(vals_t[k]))
+            per[i]["rew"].append(float(rewards[i]))
+            per[i]["done"].append(done_all)
+        obs = nobs
+        if done_all:
+            obs = env.reset()
+    return per, obs
+
+
+def update(policy, optim, per, hp):
+    """One PPO update: per-agent GAE, then concatenated minibatch updates over the
+    shared policy. Returns the last minibatch info dict."""
+    all_obs, all_act, all_logp, all_adv, all_ret = [], [], [], [], []
+    for b in per.values():
+        adv, ret = pc.compute_gae(b["rew"], b["val"], b["done"],
+                                  hp["gamma"], hp["gae_lambda"])
+        all_obs += b["obs"]
+        all_act += b["act"]
+        all_logp += b["logp"]
+        all_adv += adv
+        all_ret += ret
+
+    obs = torch.stack(all_obs)
+    act = torch.stack(all_act)
+    old_logp = torch.stack(all_logp).detach()
+    adv_t = torch.as_tensor(all_adv, dtype=torch.float32)
+    adv_t = (adv_t - adv_t.mean()) / (adv_t.std() + 1e-8)
+    ret_t = torch.as_tensor(all_ret, dtype=torch.float32)
+
+    n = obs.shape[0]
+    idx = np.arange(n)
+    last_info = {}
+    for _ in range(hp["n_epochs"]):
+        np.random.shuffle(idx)
+        for start in range(0, n, hp["batch_size"]):
+            b = idx[start:start + hp["batch_size"]]
+            dist = policy.policy(obs[b])
+            vals = policy.value(obs[b])
+            loss, info = pc.ppo_loss(dist, act[b], old_logp[b], adv_t[b], vals,
+                                     ret_t[b], clip=hp["clip_range"],
+                                     ent_coef=hp["ent_coef"])
+            optim.zero_grad()
+            loss.backward()
+            optim.step()
+            last_info = info
+    return last_info
+
+
+def train(scenario: str, lam: float, seed: int, steps: int) -> str:
+    hp = _hp()
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    env = make_corridor_env(seed=seed, scenario=scenario, lam=lam)
+    obs_dim, act_dim = _obs_act_dims(env)
+    policy = pc.ActorCritic(obs_dim, act_dim, hidden=hp["hidden"])
+    optim = torch.optim.Adam(policy.parameters(), lr=hp["lr"])
+
+    obs = env.reset()
+    collected = 0
+    while collected < steps:
+        per, obs = collect_rollout(env, policy, obs, hp["n_steps"])
+        update(policy, optim, per, hp)
+        collected += hp["n_steps"] * len(env.ts_ids)
+    env.close()
+
+    os.makedirs("models", exist_ok=True)
+    tag = f"{scenario}_lam{str(lam).replace('.', '')}_seed{seed}"
+    path = f"models/ippo_{tag}.pt"
+    torch.save(policy.state_dict(), path)
+    print(f"ippo model saved: {path}")
+    return path
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--scenario", default="corridor_offpeak")
+    parser.add_argument("--lam", type=float, default=0.5)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--steps", type=int, default=100_000)
+    args = parser.parse_args()
+    train(args.scenario, args.lam, args.seed, args.steps)
