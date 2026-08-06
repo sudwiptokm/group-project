@@ -19,7 +19,9 @@ while not done:
     _, reward, term, trunc, _ = env.step(a)
     a = (a + 1) % n
     effs.append(abs(reward))
-    safs.append(ec._safety_penalty(ts))  # stateless recompute; safe to call here
+    # window totals for the decision that just elapsed — same quantity the
+    # reward subtracts (_step_safety_penalty), read non-destructively
+    safs.append(ec._step_safety_penalty(ts))
     done = term or trunc
 env.close()
 

@@ -42,7 +42,10 @@ VULNERABILITY = {"moto": 1.0, "auto": 0.6, "car": 0.3}
 DEFAULT_VULN = 0.3  # unknown type -> treat as a car (least vulnerable)
 
 B_THRESH = 4.5      # m/s^2 : |deceleration| above this counts as an emergency brake (used in safety reward; see spec section 4)
-SAFETY_SCALE = 0.024  # calibrated: mean_safety/mean|eff| on peak seed0 (0.206/8.44); see spec section 4
+# calibrated: mean_safety/mean|eff| on peak seed0 (17.97/8.44); see spec section 4.
+# Recalibrated after the accumulator fix — the pre-fix value (0.024) was measured
+# against a safety signal that sampled one second in five and never saw yellow.
+SAFETY_SCALE = 2.1298
 
 
 def _vehicle_vuln(type_id: str) -> float:
@@ -60,14 +63,19 @@ def _internal_lanes(ts) -> list:
     return list({conn[2] for lk in links if lk for conn in lk if conn and conn[2]})
 
 
-def _safety_components(ts):
+def _safety_components(ts, internal_lanes=None):
     """Return (brake_term, exposure_term), the two vulnerability-weighted safety
-    sub-terms for the current step. Shared by the reward and the metric logging so
-    they never diverge.
+    sub-terms **for the current simulation second**.
 
     brake_term    : sum of vulnerability over vehicles braking harder than B_THRESH
     exposure_term : sum of vulnerability over vehicles on internal junction lanes
                     while the phase is yellow / clearing
+
+    `internal_lanes` may be supplied by a caller that has already cached the
+    (static) junction topology, to avoid a TraCI round-trip every second.
+
+    This is an instantaneous sample. Both sub-terms are only meaningful when
+    accumulated over every second of a decision window — see _SafetyWindow.
     """
     sumo = ts.sumo
 
@@ -79,7 +87,8 @@ def _safety_components(ts):
 
     exposure_term = 0.0
     if ts.is_yellow:
-        for lane in _internal_lanes(ts):
+        lanes = _internal_lanes(ts) if internal_lanes is None else internal_lanes
+        for lane in lanes:
             for vid in sumo.lane.getLastStepVehicleIDs(lane):
                 exposure_term += _vehicle_vuln(sumo.vehicle.getTypeID(vid))
 
@@ -87,9 +96,77 @@ def _safety_components(ts):
 
 
 def _safety_penalty(ts) -> float:
-    """Composite safety penalty = brake_term + exposure_term (see _safety_components)."""
+    """Instantaneous composite penalty = brake_term + exposure_term."""
     brake_term, exposure_term = _safety_components(ts)
     return brake_term + exposure_term
+
+
+class _SafetyWindow:
+    """Accumulates the safety sub-terms over every second of a decision window.
+
+    sumo-rl only computes rewards and info at action steps, i.e. after the
+    simulation has already advanced `delta_time` seconds (env.step -> _run_steps).
+    Sampling the safety terms at that moment is wrong twice over:
+
+      * exposure is dead code. `set_next_phase` raises `is_yellow`, and
+        `TrafficSignal.update` lowers it again after `yellow_time` seconds --
+        always before the window ends, because sumo-rl asserts
+        `delta_time > yellow_time`. So `is_yellow` is False at every point the
+        reward is evaluated and the exposure term can never fire.
+      * braking is undersampled by a factor of `delta_time`: only vehicles
+        decelerating hard in the single final second are ever seen.
+
+    The window therefore samples on each simulation second and is read (not
+    drained) at the action step, so the reward and the logged metrics see the
+    same totals. Junction topology is static, so internal lanes are cached per
+    signal id rather than re-queried every second.
+    """
+
+    def __init__(self):
+        self._acc = {}          # ts_id -> [brake, exposure] for the current window
+        self._internal = {}     # ts_id -> internal lanes (cached across windows)
+
+    def reset(self) -> None:
+        """Start a new decision window. Topology cache is kept."""
+        self._acc = {}
+
+    def _internal_lanes_for(self, ts) -> list:
+        if ts.id not in self._internal:
+            self._internal[ts.id] = _internal_lanes(ts)
+        return self._internal[ts.id]
+
+    def accumulate(self, ts) -> None:
+        """Add this simulation second's safety sample for one traffic signal."""
+        brake, exposure = _safety_components(
+            ts, internal_lanes=self._internal_lanes_for(ts)
+        )
+        cur = self._acc.setdefault(ts.id, [0.0, 0.0])
+        cur[0] += brake
+        cur[1] += exposure
+
+    def for_ts(self, ts_id: str):
+        """(brake, exposure) accumulated this window for one signal."""
+        brake, exposure = self._acc.get(ts_id, (0.0, 0.0))
+        return (brake, exposure)
+
+    def totals(self):
+        """(brake, exposure) accumulated this window, summed over all signals."""
+        brake = sum(v[0] for v in self._acc.values())
+        exposure = sum(v[1] for v in self._acc.values())
+        return (brake, exposure)
+
+
+def _step_safety_penalty(ts) -> float:
+    """Safety penalty over the decision window that just elapsed.
+
+    Falls back to the instantaneous sample when the signal's environment keeps
+    no window (a plain SumoEnvironment, or a bare test stub).
+    """
+    window = getattr(getattr(ts, "env", None), "_safety_window", None)
+    if window is None:
+        return _safety_penalty(ts)
+    brake, exposure = window.for_ts(ts.id)
+    return brake + exposure
 
 
 def _efficiency(ts) -> float:
@@ -111,7 +188,7 @@ def make_safety_reward_fn(lam: float, scale: Optional[float] = None):
         s = SAFETY_SCALE if scale is None else scale
         if s == 0:
             raise ValueError("safety scale must be non-zero")
-        return eff - lam * (_safety_penalty(ts) / s)
+        return eff - lam * (_step_safety_penalty(ts) / s)
 
     reward_fn.__name__ = f"safety_reward_lam{lam}"
     return reward_fn
@@ -187,14 +264,30 @@ class SafetyLoggingEnv(SumoEnvironment):
 
     These are the actual safety quantities the reward penalises — logged so
     compare.py / plots.py can report them instead of a proxy like stopped count.
+
+    Both the reward and these metrics read the same per-window accumulator
+    (_SafetyWindow), sampled every simulation second rather than only at action
+    steps — see _SafetyWindow for why the action-step sample is unusable.
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._safety_window = _SafetyWindow()
+
+    def step(self, action):
+        # a new decision window begins; the totals read after super().step()
+        # cover exactly the seconds this action was in force
+        self._safety_window.reset()
+        return super().step(action)
+
+    def _sumo_step(self):
+        super()._sumo_step()
+        # traffic_signals do not exist yet during the reset that starts SUMO
+        for ts in getattr(self, "traffic_signals", {}).values():
+            self._safety_window.accumulate(ts)
+
     def _get_safety_info(self) -> dict:
-        brake = exposure = 0.0
-        for ts in self.traffic_signals.values():
-            b, e = _safety_components(ts)
-            brake += b
-            exposure += e
+        brake, exposure = self._safety_window.totals()
         return {
             "system_safety_brake": brake,
             "system_safety_exposure": exposure,
