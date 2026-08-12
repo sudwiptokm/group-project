@@ -55,6 +55,11 @@ LAMBDAS="${LAMBDAS:-0.0 0.5 1.0}"       # MUST keep the decimal point (_tag stri
 TRAIN_SEEDS="${TRAIN_SEEDS:-0 1 2}"
 EVAL_SEEDS="${EVAL_SEEDS:-42 43 44}"
 SCENARIO="${SCENARIO:-peak}"
+# Baseline green, in seconds. 60 is the best static plan in the peak sweep
+# (analysis/static_timing.py: 11.5 s mean wait vs 26.7 s for the 10 s cycler
+# Stage 1 called "fixed-time"). The comparison is only fair against a
+# competently timed plan.
+BASELINE_GREEN="${BASELINE_GREEN:-60}"
 
 export EPISODE_SECONDS="${EPISODE_SECONDS:-1200}"   # mean wait over 0-1200s
 export TIME_TO_TELEPORT="${TIME_TO_TELEPORT:-300}"  # tracks the 0-3600s mean
@@ -75,7 +80,7 @@ DEFAULTS_FLAG=""
 [ "$USE_DEFAULTS" = "1" ] && DEFAULTS_FLAG="--defaults"
 
 log "lambda sweep: algos=[$ALGOS] lambdas=[$LAMBDAS] seeds=[$TRAIN_SEEDS] steps=$STEPS jobs=$JOBS defaults=$USE_DEFAULTS"
-log "env: EPISODE_SECONDS=$EPISODE_SECONDS TIME_TO_TELEPORT=$TIME_TO_TELEPORT scenario=$SCENARIO"
+log "env: EPISODE_SECONDS=$EPISODE_SECONDS TIME_TO_TELEPORT=$TIME_TO_TELEPORT scenario=$SCENARIO baseline_green=$BASELINE_GREEN"
 
 # ---- stage 1: train ---------------------------------------------------------
 JOBLIST="$RUNLOG/train_jobs.txt"
@@ -126,9 +131,9 @@ for algo in $ALGOS; do
 done
 
 for es in $EVAL_SEEDS; do
-    out="logs/eval_fixedtime_${SCENARIO}_seed${es}_conn0_ep1.csv"
+    out="logs/eval_fixedtime_${SCENARIO}_seed${es}_g${BASELINE_GREEN}_conn0_ep1.csv"
     if [ -f "$out" ] && [ "$FORCE" -eq 0 ]; then continue; fi
-    echo "python baseline.py --scenario $SCENARIO --seed $es > $RUNLOG/eval_fixedtime_seed${es}.log 2>&1" >> "$JOBLIST"
+    echo "python baseline.py --scenario $SCENARIO --seed $es --green $BASELINE_GREEN > $RUNLOG/eval_fixedtime_seed${es}_g${BASELINE_GREEN}.log 2>&1" >> "$JOBLIST"
 done
 
 NEVAL=$(wc -l < "$JOBLIST" | tr -d ' ')
