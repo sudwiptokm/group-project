@@ -28,3 +28,7 @@ backup_loop.sh
 # Stage-1 peak artifacts, moved aside 2026-08-12 so resume logic cannot reuse
 # models trained against the pre-fix reward (see docs/FINDINGS_2026-08-12.md)
 archive_stage1_peak/
+
+# Presentation media (large, regenerable by presentation/capture_demo*.py)
+presentation/*.mp4
+presentation/*.pdf
