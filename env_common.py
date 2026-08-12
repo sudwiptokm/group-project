@@ -306,7 +306,24 @@ class SafetyLoggingEnv(SumoEnvironment):
 
 
 def make_env(seed: int, scenario: str = "base", lam: float = 0.0,
-             gui: bool = False, out_csv: str = None) -> SumoEnvironment:
+             gui: bool = False, out_csv: str = None,
+             teleport: int = None) -> SumoEnvironment:
+    """`teleport` = SUMO --time-to-teleport, in seconds.
+
+    sumo-rl defaults this to -1 (teleporting off), which makes junction
+    deadlock an absorbing state: the two-phase program has permissive left
+    turns, so above ~1.0x base demand the junction can lock and nothing ever
+    clears it. At peak (1.5x base) that produced pure-gridlock episodes whose
+    "waiting time" was just a clock. SUMO's own default (300) keeps the run
+    measurable: peak settles at 42.4 +/- 10.4 s mean wait over seeds 42-46,
+    ~9 teleports per episode, no deadlock.
+
+    Resolved from the TIME_TO_TELEPORT env var when not passed explicitly, so
+    the run scripts can set it once for a whole sweep. Defaults to -1 --
+    sumo-rl's value -- so existing callers behave exactly as before.
+    """
+    if teleport is None:
+        teleport = int(os.environ.get("TIME_TO_TELEPORT", "-1"))
     # vtypes + sublane always; gui-settings only under sumo-gui (plain sumo rejects it)
     extra = "--additional-files vtypes.add.xml --lateral-resolution 0.5"
     if gui:
@@ -326,6 +343,7 @@ def make_env(seed: int, scenario: str = "base", lam: float = 0.0,
         reward_fn=make_safety_reward_fn(lam),   # SAME reward for all agents at a given lam
         single_agent=True,              # one TL -> SB3 single-agent API
         sumo_seed=seed,
+        time_to_teleport=teleport,
         out_csv_name=out_csv,
         sumo_warnings=False,
         additional_sumo_cmd=extra,

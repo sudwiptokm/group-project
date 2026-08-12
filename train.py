@@ -94,10 +94,16 @@ def train(algo: str, steps: int, seed: int, use_defaults: bool,
 
 
 def evaluate(algo: str, model_path: str, seed: int, gui: bool,
-             scenario: str = "base", lam: float = 0.0):
+             scenario: str = "base", lam: float = 0.0, train_seed: int = None):
     tag = _tag(scenario, lam)
-    env = make_env(seed=seed, scenario=scenario, lam=lam, gui=gui,
-                   out_csv=f"logs/eval_{algo}_{tag}_seed{seed}")
+    # `seed` is the DEMAND seed. Without train_seed the name carries no trace of
+    # which checkpoint produced it, so evaluating several training seeds on one
+    # demand seed silently overwrites the same CSV. The "_t<n>" suffix sits
+    # after "seed<n>" so compare.py's eval_<algo>_<tag>_seed*.csv glob still hits.
+    stem = f"logs/eval_{algo}_{tag}_seed{seed}"
+    if train_seed is not None:
+        stem += f"_t{train_seed}"
+    env = make_env(seed=seed, scenario=scenario, lam=lam, gui=gui, out_csv=stem)
     model = ALGOS[algo]["cls"].load(model_path)
     obs, _ = env.reset()
     done = False
@@ -111,7 +117,7 @@ def evaluate(algo: str, model_path: str, seed: int, gui: bool,
     # never gets one, so save it explicitly before closing the connection.
     env.save_csv(env.out_csv_name, env.episode)
     env.close()
-    csv = f"logs/eval_{algo}_{tag}_seed{seed}_conn{env.label}_ep{env.episode}.csv"
+    csv = f"{stem}_conn{env.label}_ep{env.episode}.csv"
     print(f"eval {algo} seed={seed} total_reward={total_r:.1f}  (metrics -> {csv})")
 
 
@@ -130,11 +136,14 @@ if __name__ == "__main__":
                    help="ignore params/<algo>.json, force default hyperparameters")
     p.add_argument("--scenario", default="base", choices=["base", "peak", "offpeak"])
     p.add_argument("--lam", type=float, default=0.0, help="safety-reward weight")
+    p.add_argument("--train-seed", type=int, default=None,
+                   help="seed the evaluated checkpoint was trained with; tags the "
+                        "eval CSV so several checkpoints can share a demand seed")
     args = p.parse_args()
 
     if args.eval:
         evaluate(args.algo, args.eval, seed=args.seed, gui=args.gui,
-                 scenario=args.scenario, lam=args.lam)
+                 scenario=args.scenario, lam=args.lam, train_seed=args.train_seed)
     else:
         train(args.algo, steps=args.steps, seed=args.seed, use_defaults=args.defaults,
               scenario=args.scenario, lam=args.lam)
