@@ -13,6 +13,13 @@ analysis/static_timing.py shows the intersection is strongly green-duration
 sensitive at peak (10 s: 26.7 s mean wait, 60 s: 11.5 s), so the green the
 baseline runs at decides whether the comparison against RL is fair at all.
 
+The default is 60 s, which sits in the middle of a flat optimum rather than at a
+tuned argmin: paired over seeds 42-46, the greens from 45 s to 90 s differ by
++/-13 s against a seed-to-seed spread of ~30 s, i.e. they are indistinguishable,
+while 10 s is 3-4x worse and 120 s is drifting back up. Picking the sample
+minimum (75 s, by 0.4 s on the mean and losing on 4 of 5 seeds) would be reading
+seed noise as a policy effect -- the error this project already made twice.
+
 The green appears in the CSV name AFTER the seed fragment
 (`..._seed<seed>_g<green>_conn<N>_ep<M>.csv`) so compare.py's
 `eval_fixedtime_<scenario>_seed*` glob still matches. That also means CSVs for
@@ -24,7 +31,7 @@ import os
 
 from env_common import make_env
 
-DEFAULT_GREEN = 60   # best static plan at peak (analysis/static_timing.py)
+DEFAULT_GREEN = 60   # mid-plateau of the peak sweep (analysis/static_timing.py)
 
 
 def run_baseline(scenario: str, seed: int, green: int = DEFAULT_GREEN,
@@ -63,7 +70,8 @@ if __name__ == "__main__":
     p.add_argument("--scenario", default="base", choices=["base", "peak", "offpeak"])
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--green", type=int, default=DEFAULT_GREEN,
-                   help="seconds each green phase is held (default: best static plan)")
+                   help="seconds each green phase is held (default: mid-plateau "
+                        "of the peak static sweep)")
     p.add_argument("--teleport", type=int, default=None,
                    help="SUMO --time-to-teleport; default from TIME_TO_TELEPORT env var")
     args = p.parse_args()

@@ -2,9 +2,14 @@
 
 Sweeps static green durations to find the best achievable fixed plan. If the
 best static plan is close to what the learned policies score, the action space
-(2 green phases, min_green 10, max_green 60, decisions every 5 s) simply does
-not leave room for RL to win, and the null result is structural rather than a
-training-budget artefact.
+(2 green phases, min_green 10, decisions every 5 s) simply does not leave room
+for RL to win, and the null result is structural rather than a training-budget
+artefact.
+
+The sweep is NOT capped at make_env's max_green=60: sumo-rl's TrafficSignal
+stores max_green and never reads it (traffic_signal.py:77 is its only use), so
+nothing enforces an upper bound on green. Longer greens are reachable both here
+and by a learned policy, and the sweep has to cover them to claim an optimum.
 
 Also records teleports and the per-step reward so the reward-corruption
 hypothesis can be checked: a teleport erases a jammed vehicle's accumulated
@@ -24,7 +29,8 @@ os.chdir(REPO)
 import numpy as np
 import pandas as pd
 
-from env_common import make_env
+from analysis.tripinfo import reduce_tripinfo
+from env_common import make_env, tripinfo_path
 
 OUT = os.path.join(REPO, "analysis", "static_logs")
 
@@ -34,7 +40,7 @@ def run(green: int, seed: int, teleport: int = 300) -> dict:
     os.makedirs(OUT, exist_ok=True)
     csv = os.path.join(OUT, f"g{green}_seed{seed}")
     env = make_env(seed=seed, scenario="peak", lam=0.0, gui=False, out_csv=csv,
-                   teleport=teleport)
+                   teleport=teleport, tripinfo=True)
 
     hold = max(1, green // 5)          # decision steps per green (delta_time=5)
     obs, _ = env.reset()
@@ -61,9 +67,16 @@ def run(green: int, seed: int, teleport: int = 300) -> dict:
     r_tp = r[tp > 0].mean() if (tp > 0).any() else float("nan")
     r_no = r[tp == 0].mean() if (tp == 0).any() else float("nan")
 
+    # completed-trip metrics: `wait` below is the survivorship-biased in-network
+    # average, kept for continuity with the earlier sweep. `delay` is the metric
+    # the results now rank on. See analysis/tripinfo.py.
+    trips = reduce_tripinfo(tripinfo_path(csv))
+
     row = {
         "green": green,
         "seed": seed,
+        "delay": trips.get("trip_time_loss_mean", float("nan")),
+        "completed": trips.get("trips_completed", 0),
         "wait": df.system_mean_waiting_time.mean(),
         "speed": df.system_mean_speed.mean(),
         "stopped": df.system_total_stopped.mean(),
