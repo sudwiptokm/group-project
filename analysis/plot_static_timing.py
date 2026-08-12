@@ -108,9 +108,13 @@ def plot(g: pd.DataFrame, out: str) -> str:
         row = worst10.iloc[0]
         ax.plot(row.green, row.delay, marker="o", markersize=9, color=CALLOUT,
                 zorder=3)
+        # below the marker: the curve rises steeply to the right of 10 s, so a
+        # label placed there crosses the line it is annotating
         ax.annotate("what Stage 1 called\n“fixed-time”",
-                    xy=(row.green, row.delay), xytext=(16, -6),
-                    textcoords="offset points", color=CALLOUT, fontsize=10)
+                    xy=(row.green, row.delay), xytext=(4, -42),
+                    textcoords="offset points", color=CALLOUT, fontsize=10,
+                    arrowprops=dict(arrowstyle="-", color=CALLOUT, linewidth=1,
+                                    alpha=0.6))
 
     ax.set_ylabel("delay per completed trip (s)", color=INK)
     ax.set_title("Static green duration sets performance at peak demand",
