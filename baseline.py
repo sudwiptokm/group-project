@@ -33,7 +33,7 @@ def run_baseline(scenario: str, seed: int, green: int = DEFAULT_GREEN,
     csv = f"logs/eval_fixedtime_{scenario}_seed{seed}_g{green}"
     # lam=0 -> reward term irrelevant here; we never learn, just cycle phases
     env = make_env(seed=seed, scenario=scenario, lam=0.0, gui=False, out_csv=csv,
-                   teleport=teleport)
+                   teleport=teleport, tripinfo=True)
 
     # decision steps to hold one green; the env clamps to min_green/max_green
     hold = max(1, green // env.delta_time)
