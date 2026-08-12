@@ -318,8 +318,18 @@ class SafetyLoggingEnv(SumoEnvironment):
 
 def make_env(seed: int, scenario: str = "base", lam: float = 0.0,
              gui: bool = False, out_csv: str = None,
-             teleport: int = None, tripinfo: bool = False) -> SumoEnvironment:
+             teleport: int = None, tripinfo: bool = False,
+             min_green: int = 10) -> SumoEnvironment:
     """`teleport` = SUMO --time-to-teleport, in seconds.
+
+    `min_green` is the shortest a green may run before a switch request is
+    honoured (sumo-rl silently ignores earlier requests -- see
+    TrafficSignal.set_next_phase). It is a knob on the ACTION SPACE, not on the
+    simulation: at the default 10 s, with a 3 s amber, a controller that switches
+    as often as it may loses 23% of the cycle to clearance, which is what the
+    static sweep shows costs learned policies the comparison. Exposed so the
+    "does a longer floor open room for adaptive control?" question can be
+    measured rather than argued.
 
     `tripinfo` writes SUMO's per-trip output to `<out_csv>_tripinfo.xml`
     (requires out_csv). The step CSV's system_mean_waiting_time averages over
@@ -361,7 +371,7 @@ def make_env(seed: int, scenario: str = "base", lam: float = 0.0,
         num_seconds=int(os.environ.get("EPISODE_SECONDS", "3600")),
         delta_time=5,          # seconds between agent decisions
         yellow_time=3,
-        min_green=10,
+        min_green=min_green,
         max_green=60,
         reward_fn=make_safety_reward_fn(lam),   # SAME reward for all agents at a given lam
         single_agent=True,              # one TL -> SB3 single-agent API

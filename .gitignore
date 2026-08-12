@@ -37,3 +37,6 @@ archive_stage1_peak/
 # Presentation media (large, regenerable by presentation/capture_demo*.py)
 presentation/*.mp4
 presentation/*.pdf
+
+# Per-run output of the actuated-controller probe (same reasoning as static_logs)
+analysis/actuated_logs/
