@@ -103,7 +103,10 @@ def evaluate(algo: str, model_path: str, seed: int, gui: bool,
     stem = f"logs/eval_{algo}_{tag}_seed{seed}"
     if train_seed is not None:
         stem += f"_t{train_seed}"
-    env = make_env(seed=seed, scenario=scenario, lam=lam, gui=gui, out_csv=stem)
+    # tripinfo on: evaluation is the one place completed-trip delay/throughput
+    # is needed, and it is a single episode so nothing overwrites it
+    env = make_env(seed=seed, scenario=scenario, lam=lam, gui=gui, out_csv=stem,
+                   tripinfo=True)
     model = ALGOS[algo]["cls"].load(model_path)
     obs, _ = env.reset()
     done = False
