@@ -433,7 +433,7 @@ python make_scenarios.py                 # once: build peak/off-peak route files
 
 # Stage 1 — pick best algorithm (overnight budget, the default)
 caffeinate -i ./run_experiment.sh
-python compare.py                        # winner = lowest system_mean_waiting_time
+python compare.py                        # winner = lowest trip_time_loss_mean (delay per completed trip)
 
 # Stage 2 — safety λ-sweep on the winner only
 caffeinate -i env ALGOS="<winner>" LAMBDAS="0.0 0.5 1.0" ./run_experiment.sh --skip-tune
