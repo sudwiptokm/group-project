@@ -131,7 +131,8 @@ fi
 if [ "$SKIP_EVAL" -eq 0 ]; then
     for scenario in $SCENARIOS; do
         # Fixed-time baseline: once per scenario, resumable.
-        # baseline.py writes: logs/eval_fixedtime_<scenario>_seed0_conn<N>_ep<M>.csv
+        # baseline.py writes: logs/eval_fixedtime_<scenario>_seed0_g<green>_conn<N>_ep<M>.csv
+        # (green defaults to baseline.py's DEFAULT_GREEN = the best static plan)
         if [ "$FORCE" -eq 0 ] && ls "logs/eval_fixedtime_${scenario}_seed0"*.csv >/dev/null 2>&1; then
             log "SKIP baseline $scenario (csv exists)"
         else
