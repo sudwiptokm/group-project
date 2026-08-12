@@ -1,15 +1,14 @@
 # Reinforcement Learning for Traffic Signal Control under Heterogeneous Urban Traffic
 
-> ## ⚠ SUPERSEDED — do not cite the peak results
+> ## Revision note — 2026-08-12
 >
-> The peak numbers below (DQN/A2C −24% vs fixed-time) do not hold. Six defects
-> are documented with measurements in `docs/FINDINGS_2026-08-12.md` (2026-08-12).
-> Corrected, the result reverses: **no learned policy beats a competently timed
-> static plan** — best static 11.5 s ± 0.68 against 20–33 s for the learned
-> policies. The "fixed-time" baseline referred to throughout is a 10 s-green
-> cycler (`baseline.py:23`), not a fixed-time plan.
+> The peak results in this report were rewritten after an audit found six
+> defects in how they were produced (§4.1). The earlier claim that DQN and A2C
+> cut mean waiting time ~24% under peak demand **is withdrawn**; corrected, no
+> learned policy in this project beats a competently timed static plan.
+> Measurements and reproduction commands: `docs/FINDINGS_2026-08-12.md`.
 >
-> **Off-peak results are unaffected and still valid.**
+> **The off-peak results are unaffected and stand as originally reported.**
 
 
 **A fair, tuned comparison of DQN, QR-DQN, PPO, and A2C against a fixed-time baseline with a safety-aware reward**
@@ -22,7 +21,7 @@ SUMO + Stable-Baselines3 · Final Project Report
 
 ## Abstract
 
-This report presents a reinforcement-learning (RL) approach to adaptive traffic-signal control at a single four-arm urban intersection carrying heterogeneous traffic (motorcycles, auto-rickshaws, and cars). The controller observes the intersection through a *passenger-car-equivalent (PCU) weighted* representation, so that vehicles are counted by the road-space they actually occupy rather than by raw number, and it is trained on a *safety-aware* reward that trades reduction in waiting time against a vulnerability-weighted penalty for emergency braking and intersection exposure. Four algorithms — DQN, QR-DQN, PPO, and A2C — are compared on an identical environment, reward, observation, and action space, each tuned with Optuna and evaluated across peak and off-peak demand against a fixed-time baseline. Under oversaturated peak demand, DQN and A2C each cut mean waiting time by approximately 24% relative to fixed-time; DQN records the best mean, and A2C matches it with substantially tighter seed variance. Under light off-peak demand, the fixed-time controller is already near-optimal and no RL agent improves upon it, but all four agents keep traffic mobile rather than collapsing into gridlock — an outcome reported honestly as a ceiling rather than a failure. One methodological asymmetry, affecting only how the off-peak A2C hyperparameters were selected, is disclosed and explained.
+This report presents a reinforcement-learning (RL) approach to adaptive traffic-signal control at a single four-arm urban intersection carrying heterogeneous traffic (motorcycles, auto-rickshaws, and cars). The controller observes the intersection through a *passenger-car-equivalent (PCU) weighted* representation, so that vehicles are counted by the road-space they actually occupy rather than by raw number, and it is trained on a *safety-aware* reward that trades reduction in waiting time against a vulnerability-weighted penalty for emergency braking and intersection exposure. Four algorithms — DQN, QR-DQN, PPO, and A2C — are compared on an identical environment, reward, observation, and action space, each tuned with Optuna and evaluated across peak and off-peak demand against a fixed-time baseline. Under light off-peak demand, the fixed-time controller is already near-optimal and no RL agent improves upon it, but all four agents keep traffic mobile rather than collapsing into gridlock — an outcome reported honestly as a ceiling rather than a failure. Under oversaturated peak demand the project reports a negative result: an audit of the peak pipeline found six defects, five of them independent and any one sufficient to void the headline, and correcting them reverses the earlier conclusion. Sweeping static green durations shows that the best fixed plan at this intersection outperforms every learned policy produced here by a factor of two to three, and the cause is identified as structural — with a 3 s amber and a 10 s minimum green, a controller that switches often loses up to 23% of its capacity to clearance time, a cost `diff_waiting_time` surfaces too late for credit assignment. The reportable contributions are therefore the negative result and its mechanism, the measurement defects (three of which concern common `sumo-rl` usage rather than this codebase), and the off-peak ceiling. One methodological asymmetry, affecting only how the off-peak A2C hyperparameters were selected, is disclosed and explained.
 
 ---
 
@@ -103,23 +102,82 @@ The experimental design isolates the effect of the algorithm by holding everythi
 
 ## 4. Results
 
-All metrics below are `system_mean_waiting_time` (seconds; lower is better), reported as mean ± std over five held-out evaluation seeds. Fixed-time is a single deterministic run. Results use the reference **λ = 0.5**.
+Two metrics appear below and they are **not** interchangeable. `system_mean_waiting_time` (seconds) is `sumo-rl`'s per-step metric: `getWaitingTime()` averaged over the vehicles *still in the network*, then averaged over the episode. It is survivorship-biased — a controller that strands traffic is graded on the vehicles it did not strand — and under deadlock it degenerates into a clock that advances one second per simulated second. The off-peak results in §4.2 predate the switch and are quoted in it; §4.1 additionally reports **delay per completed trip** (`timeLoss` from SUMO's `tripinfo`, one row per trip that actually finished) together with throughput and completion rate, which is the metric the project now ranks on. Both are quoted with the episode length and teleport setting they were measured under, because neither is comparable across those settings. Results use the reference **λ = 0.5**; the λ ablation has never been run.
 
 ### 4.1 Peak Demand (Oversaturated Intersection)
 
+#### 4.1.1 The withdrawn result
+
+The following was reported in the previous revision and is withdrawn in full.
+
 | Algorithm | Mean waiting (s) | ± std | vs fixed-time |
 |---|--:|--:|--:|
-| **DQN** | 1002.8 | 401.6 | **−24.0%** |
-| **A2C** | 1003.3 | 86.1 | **−24.0%** |
+| DQN | 1002.8 | 401.6 | −24.0% |
+| A2C | 1003.3 | 86.1 | −24.0% |
 | fixed-time | 1319.2 | — | baseline |
 | PPO | 1356.5 | 45.0 | +2.8% |
 | QR-DQN | 1400.7 | 4.9 | +6.2% |
 
-![Peak demand: RL vs fixed-time mean waiting time](../results/bars_peak_lam05.png)
+Six defects were found, five of them independent of one another and any one sufficient to invalidate the number.
 
-![Peak demand: percentage waiting-time reduction vs fixed-time](../results/improvement_peak_lam05.png)
+1. **The metric was a gridlock clock.** Peak deadlocked at t = 780 s (629 vehicles, mean speed ~1e-5 m/s); the 1319 s figure is the area under that ramp, not a delay. It also inverted the ranking: A2C deadlocked on 5 of 5 seeds and scored *best*, while QR-DQN kept traffic moving and scored *worst*.
+2. **The baseline ran on different traffic than the agents.** The demand realisation is seed-dependent; the baseline was evaluated on seed 0 and the agents on seeds 42–46. Fixed-time spans 242–1319 s across those six seeds — a 5.4× spread, with seed 0 the worst draw. Paired against the baseline on its *own* seed, every algorithm reverses sign: DQN −23.9% → **+56.9%**, A2C → **+67.6%**, PPO → **+118.4%**, QR-DQN → **+123.3%**.
+3. **Every evaluated model predates the safety fix** described in §7 and was never retrained; the 2026-08-06 pass re-evaluated old checkpoints under corrected logging.
+4. **The reported ± std was not seed variance.** The driver evaluated only the reference training seed's checkpoint, so four of the five models trained per cell were never evaluated; ±402 is one policy's spread across five demand realisations.
+5. **The gridlock was a library default.** `sumo-rl` sets `time_to_teleport = -1` where SUMO's own default is 300 s. With teleporting disabled and permissive left turns, junction deadlock is an *absorbing* state, and a demand sweep from 0.9× to 1.4× is bimodal rather than graded. At `--time-to-teleport 300` peak demand is stable and measurable; the demand level itself needed no change.
+6. **The "fixed-time" baseline was not a fixed-time plan.** It advanced the phase on every decision step, which the environment clamps to the minimum green — a 10 s-green cycler, not the 42 s program in the network file, and the *worst* point of the sweep in §4.1.2.
 
-Under peak demand the intersection is heavily oversaturated — the fixed-time controller backs up to roughly 1319 s mean waiting time. **Only DQN and A2C beat the baseline**, each cutting mean waiting time by about 24%. PPO and QR-DQN land marginally worse than fixed-time (+2.8% and +6.2%). DQN posts the best mean but with high seed-to-seed variance (±402); A2C nearly ties that mean with a far tighter spread (±86).
+#### 4.1.2 What replaces it: the best static plan
+
+Sweeping the green duration of a static plan over the same environment (`analysis/static_timing.py`; peak 1.5×, seeds 42–46, 3600 s episodes, `--time-to-teleport 300`; figure in `results/static_timing_peak.png`):
+
+| Green (s) | Delay per completed trip (s) | Trips completed | vs 60 s, paired | In-network wait (s) |
+|---|---:|---:|---:|---:|
+| 10 | 298.6 ± 75.7 | 76.2% | +206.9, loses 5/5 | 29.6 |
+| 20 | 384.7 ± 39.4 | 73.2% | +292.9, loses 5/5 | 33.6 |
+| 30 | 257.4 ± 133.6 | 87.2% | +165.6, loses 4/5 | 22.6 |
+| **45** | **104.9 ± 38.2** | 95.7% | +13.1, wins 3/5 | 13.6 |
+| **60** | **91.8 ± 19.9** | 94.3% | — | 15.0 |
+| **75** | **91.3 ± 6.6** | 95.1% | −0.4, wins 1/5 | 16.0 |
+| **90** | **103.4 ± 18.1** | 94.5% | +11.6, wins 1/5 | 19.4 |
+| 120 | 110.8 ± 6.0 | 93.8% | +19.0, wins 1/5 | 24.5 |
+
+Bold rows form the plateau. The fourth column is the mean per-seed difference against the 60 s plan on the *same* demand seed, together with the number of seeds on which that green wins — a paired comparison, since §4.1.1 defect 2 shows how misleading unpaired means are here.
+
+Two features of the curve carry the result. First, **the 10 s and 20 s plans do not clear the demand**: 76% and 73% of trips complete, against roughly 95% everywhere on the plateau. The Stage-1 baseline was not merely slow, it left a quarter of the traffic unserved — precisely the population that the in-network waiting-time metric then declined to count. Second, **the interior is flat**.
+
+**That flatness is a plateau, not a tuned optimum, and the distinction matters.** Within 45–90 s the paired differences are +13.1 s, −0.4 s and +11.6 s while the spread across seeds at any single green is roughly 30 s. The sample minimum is 75 s, but it loses to 60 s on four of five seeds and its entire advantage comes from one outlier draw — treating it as the optimum would repeat defect 2 on a smaller scale. Performance is therefore flat across roughly 45–90 s of green, and the results below quote 60 s as a mid-plateau round number.
+
+The flatness makes the comparison harder to dismiss rather than easier: the static plan that outperforms every learned policy required no tuning skill to find, so it cannot be characterised as an unfairly optimised baseline.
+
+The sweep deliberately runs past 60 s: `sumo-rl`'s `TrafficSignal` stores `max_green` and never reads it, so the `max_green = 60` configured in `env_common.make_env` constrains nothing — longer greens are reachable by a static plan and by a learned policy alike.
+
+At a 60 s green the fixed-time plan performs as follows over seeds 42–46 (`baseline.py --scenario peak --green 60`, aggregated by `compare.py`):
+
+| Metric | Value |
+|---|--:|
+| Delay per completed trip | **91.8 ± 19.9 s** |
+| Trips completed | 4076 ± 137 |
+| Completion rate vs demand | 0.943 ± 0.032 |
+| In-network mean waiting time | 14.97 ± 3.55 s |
+
+The last two rows illustrate the metric problem directly: the same runs report 14.97 s of in-network mean waiting and 66.4 s of waiting per completed trip, a factor of four apart.
+
+**There is no comparable RL row, and this report does not manufacture one.** Every peak checkpoint predates the safety fix, and two retraining attempts at a 20k-step budget produced no learning (§7). What can be stated is that the Stage-1 policies scored 20–33 s of in-network mean waiting on 1200 s episodes where a static 60 s plan scores 11.5 s — a factor of two to three in the wrong direction.
+
+#### 4.1.3 Why: lost time to amber
+
+With `yellow_time` = 3 s, every phase switch spends three seconds serving nobody:
+
+| Green duration | Share of cycle lost to clearance |
+|---|--:|
+| 10 s | 3/13 = **23%** |
+| 20 s | 3/23 = 13% |
+| 60 s | 3/63 = **4.8%** |
+
+The agent decides every 5 s with a 10 s minimum green, so it operates precisely in the region where switching is cheap to attempt and expensive to pay for, and `diff_waiting_time` rewards the immediate queue drop on the approach just served while the clearance cost lands several decisions later. One mechanism accounts for the Stage-1 result, the pilot, and the 20k-step null together, which is why the finding is reported as structural rather than as a training-budget artefact.
+
+A competing explanation was tested and rejected: that teleports corrupt the reward by erasing a jammed vehicle's accumulated waiting time. Reward on teleport steps is mostly *more* negative (−19.1, −18.5, −13.3), because teleports occur when the jam is already severe.
 
 ### 4.2 Off-Peak Demand (Light Traffic)
 
@@ -135,15 +193,19 @@ Under peak demand the intersection is heavily oversaturated — the fixed-time c
 
 ![Off-peak demand: mean speed (mobility)](../results/speed_offpeak_lam05.png)
 
+These off-peak figures are quoted as originally measured: `system_mean_waiting_time`, against the 10 s-cycler baseline, without completed-trip metrics. The conclusion survives the audit regardless. At 0.39 s there is no headroom for any controller, nothing is stranded for the survivorship bias to conceal, and the ranking does not depend on the reward the models were trained against; a better-timed static baseline would only widen the gap in fixed-time's favour.
+
 Off-peak demand is light, and here the fixed-time controller is already near-optimal at 0.39 s mean waiting — so **no RL agent beats it**. The meaningful result is that **all four agents keep traffic mobile** rather than collapsing. DQN is within a hair of the baseline (0.48 s) and actually posts the highest mean speed; PPO and QR-DQN add roughly one to two seconds; A2C is the weakest at 36 s (speed 4.75 m/s) but is **valid and mobile**, not the gridlock collapse it previously exhibited. Every one of the eight scenario × algorithm cells is valid and reported; no cell is excluded.
 
 ---
 
 ## 5. Discussion
 
-**DQN is the overall winner.** Across the two regimes it delivers the best mean congestion relief where it matters most — the oversaturated peak — and it stays within a hair of the near-optimal fixed-time controller off-peak. A2C matches DQN's peak mean with markedly tighter variance, making it a strong and more consistent runner-up under congestion.
+**No algorithm can be declared a winner, and the project no longer claims one.** The peak comparison that ranked DQN first was produced by the pipeline audited in §4.1, and nothing survives it. Off-peak, DQN is the closest to the baseline but does not beat it. A ranking of four algorithms is only meaningful once at least one of them beats a competent static plan, and none does.
 
-**The off-peak ceiling is honest.** In light traffic a well-configured fixed plan is genuinely hard to beat: with almost no queuing to relieve, there is little for an adaptive controller to exploit, and the 0.39 s baseline sits close to the physical floor. The correct reading is that off-peak exposes a *ceiling* on what RL can add, not a failure of the method.
+**The ceiling is the finding, and it is the same ceiling in both regimes.** Off-peak it is obvious: with almost no queuing to relieve, the 0.39 s baseline sits near the physical floor. At peak it is less obvious but better evidenced — the static sweep in §4.1.2 shows a well-chosen green already captures most of the achievable performance, while the amber-loss arithmetic in §4.1.3 shows that the action space on offer (two phases, 5 s decisions, 10 s minimum green) charges a controller up to 23% of capacity for the switching it is being asked to learn. A learned controller is competing for a margin the environment has largely spent in advance.
+
+**This makes the negative result informative rather than inconclusive.** It identifies a mechanism, predicts where RL *would* have room — longer minimum greens, a protected left-turn phase, or coordination across several junctions, none of which a single static plan can imitate — and it does so from measurements this project can reproduce.
 
 **Disclosed A2C off-peak asymmetry.** For the single off-peak A2C cell, the hyperparameter-selection *objective* was cumulative waiting time (minimise) rather than the shaped reward used to select DQN, PPO, and QR-DQN. The reason is structural and worth stating precisely. At light off-peak demand throughput is essentially flat, so the `−λ · safety` term dominates the shaped reward. Under that reward the *reward-optimal* policy is "never switch phase" — which yields the best safety score and zero throughput, i.e. gridlock. Tuning A2C on the shaped reward selected exactly that collapse. Retuning A2C on waiting time makes gridlock the worst possible score and rejects it. Crucially, this changes only the **HP-selection criterion for one cell** — the training reward, environment, action/observation space, seeds, and evaluation protocol all remain identical across every algorithm and scenario, so the comparison is still apples-to-apples on what the agents optimise and how they are scored at evaluation.
 
@@ -198,4 +260,8 @@ Every member contributed to the algorithm and model-building core; each also own
 
 ## 9. Conclusion
 
-An RL controller equipped with a **PCU-weighted observation** and a **safety-aware reward** beats a fixed-time signal precisely where it matters most — under congested peak demand, where DQN and A2C each cut mean waiting time by about 24%. Under a fair, tuned, multi-seed comparison, **DQN is the most reliable winner**, with A2C matching it at peak with tighter variance. Off-peak reveals an honest ceiling: a good fixed plan is difficult to beat in light traffic, though all four agents remain mobile and avoid gridlock. The natural next step is to scale from a single junction to a **multi-intersection arterial corridor with coordinated MARL**, for which an environment prototype has already been built.
+This project set out to establish which of four RL algorithms best beats a fixed-time signal at a heterogeneous-traffic intersection, and it ends with a different and better-supported answer: **at an isolated two-phase junction, a competently timed static plan is hard to beat, and we can say why.** With a 3 s amber and a 10 s minimum green, frequent switching costs up to 23% of capacity in clearance time, and the shaped reward surfaces that cost too late for credit assignment at any budget this project could run. Off-peak reaches the same ceiling from the other side, at 0.39 s mean waiting, with all four agents mobile and none ahead of the baseline.
+
+Getting there required withdrawing the earlier peak headline and rebuilding the measurement stack around it: completed-trip delay instead of an in-network average that a stranded queue inflates, a swept static plan instead of a 10 s cycler mislabelled as fixed-time, and baselines paired to the agents' own demand seeds. Three of the six defects concern how `sumo-rl` is commonly used rather than anything specific to this codebase, which makes them worth reporting in their own right.
+
+The finding also points at where an adaptive controller *would* have room, and the next step follows directly from it: coordination across junctions is the one thing a static plan cannot imitate. Scaling to a **multi-intersection arterial corridor with coordinated MARL** — for which an environment prototype has already been built — is therefore not merely the next increment but the first setting in which the question this project asked can be answered in RL's favour.

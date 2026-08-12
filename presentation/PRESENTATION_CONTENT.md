@@ -1,15 +1,13 @@
 # Presentation Content — RL Traffic Signal Control (Group 7)
 
-> ## ⚠ SUPERSEDED — do not cite the peak results
+> ## Revision note — 2026-08-12
 >
-> The peak numbers below (DQN/A2C −24% vs fixed-time) do not hold. Six defects
-> are documented with measurements in `docs/FINDINGS_2026-08-12.md` (2026-08-12).
-> Corrected, the result reverses: **no learned policy beats a competently timed
-> static plan** — best static 11.5 s ± 0.68 against 20–33 s for the learned
-> policies. The "fixed-time" baseline referred to throughout is a 10 s-green
-> cycler (`baseline.py:23`), not a fixed-time plan.
+> The peak slides were rewritten after an audit found six defects in how those
+> numbers were produced (slide 7). The DQN/A2C −24% claim **is withdrawn**;
+> corrected, no learned policy here beats a competently timed static plan.
+> Measurements and reproduction: `docs/FINDINGS_2026-08-12.md`.
 >
-> **Off-peak results are unaffected and still valid.**
+> **The off-peak slides are unaffected and stand as originally written.**
 
 
 > Single source of content for the slide deck. Each `##` = one slide.
@@ -103,21 +101,77 @@ QR-DQN (distributional DQN) is the fourth rung instead.*
 
 ---
 
-## Slide 7 — Results: peak demand (oversaturated)
+## Slide 7 — Peak: the result we reported, and why it is withdrawn
 
-| Algorithm | Mean wait (s) | ± std | vs fixed-time |
+| Algorithm | Mean wait (s) | ± std | vs fixed-time | |
+|---|--:|--:|--:|---|
+| DQN | 1002.8 | 402 | −24.0% | **withdrawn** |
+| A2C | 1003.3 | 86 | −24.0% | **withdrawn** |
+| fixed-time | 1319.2 | — | baseline | **not a fixed-time plan** |
+| PPO | 1356.5 | 45 | +2.8% | **withdrawn** |
+| QR-DQN | 1400.7 | 5 | +6.2% | **withdrawn** |
+
+**Six defects. Five independent. Any one voids the number.**
+
+1. **The metric was a gridlock clock** — `system_mean_waiting_time` averages over
+   vehicles *still in the network*, so under deadlock it counts 1 s per second.
+   Peak locked at t = 780 s. A2C deadlocked 5/5 seeds and scored **best**.
+2. **Baseline ran on different traffic** — baseline seed 0, agents seeds 42–46.
+   Fixed-time spans 242–1319 s across seeds (5.4×); seed 0 was the worst draw.
+   Paired per seed: DQN −23.9% → **+56.9%**, A2C → **+67.6%**, PPO → **+118%**,
+   QR-DQN → **+123%**.
+3. **Every model predates the safety fix** and was never retrained.
+4. **The ±std was not seed variance** — only the reference seed's checkpoint was
+   ever evaluated; ±402 is one policy's spread across five demand draws.
+5. **The gridlock was a library default** — `sumo-rl` ships
+   `time_to_teleport = -1` (SUMO's own default is 300), which makes deadlock
+   absorbing. The demand level needed no change.
+6. **The "fixed-time" baseline was a 10 s-green cycler** — the worst point of the
+   sweep on the next slide.
+
+- *Do not show* `results/bars_peak_lam05.png` or `improvement_peak_lam05.png` —
+  both plot the withdrawn numbers.
+- Measurements + reproduction: `docs/FINDINGS_2026-08-12.md`.
+
+---
+
+## Slide 7b — Peak: what actually controls performance
+
+| green (s) | delay per completed trip | trips completed | vs 60 s, paired |
 |---|--:|--:|--:|
-| **DQN** | 1002.8 | 402 | **−24.0%** |
-| **A2C** | 1003.3 | 86 | **−24.0%** |
-| fixed-time | 1319.2 | — | baseline |
-| PPO | 1356.5 | 45 | +2.8% |
-| QR-DQN | 1400.7 | 5 | +6.2% |
+| 10 | 298.6 ± 75.7 | **76%** | +207, loses 5/5 |
+| 20 | 384.7 ± 39.4 | **73%** | +293, loses 5/5 |
+| 30 | 257.4 ± 133.6 | 87% | +166, loses 4/5 |
+| **45** | **104.9 ± 38.2** | 96% | +13, wins 3/5 |
+| **60** | **91.8 ± 19.9** | 94% | — |
+| **75** | **91.3 ± 6.6** | 95% | −0.4, wins 1/5 |
+| **90** | **103.4 ± 18.1** | 95% | +12, wins 1/5 |
+| 120 | 110.8 ± 6.0 | 94% | +19, wins 1/5 |
 
-- Fixed-time backs up to ~1319 s mean wait.
-- **DQN and A2C each cut mean waiting ~24%.**
-- A2C nearly ties DQN's mean with far tighter seed spread (±86 vs ±402).
-- *Plots:* `results/bars_peak_lam05.png` (absolute waiting) and
-  `results/improvement_peak_lam05.png` (% reduction vs fixed-time — DQN/A2C ≈ −24%)
+Peak 1.5×, seeds 42–46, 3600 s episodes, `--time-to-teleport 300`
+(`analysis/static_timing.py`). *Plot:* `results/static_timing_peak.png`.
+
+- **The 10 s plan Stage 1 called "fixed-time" leaves a quarter of the traffic
+  unserved** — 76% of trips complete against ~95% on the plateau. Those are
+  exactly the vehicles the in-network metric stops counting.
+
+- **A long green wins, and it does not need tuning to.** Performance is flat
+  across **45–90 s** — paired on the same seeds those greens differ by ±13 s
+  against a ~30 s seed-to-seed spread — and every plan in that band beats every
+  learned policy this project produced by 2–3×. Say "plateau", not "optimum":
+  nobody can dismiss this as an unfairly hand-tuned baseline.
+- **Mechanism — lost time to amber.** `yellow_time` = 3 s, so each switch serves
+  nobody for 3 s: **23%** of the cycle at a 10 s green, **4.8%** at 60 s. The
+  agent decides every 5 s with `min_green` = 10 s — exactly where switching is
+  cheap to try and ruinous to pay for — and `diff_waiting_time` only surfaces
+  that cost several decisions later.
+- **No valid RL row exists at peak**, and we do not invent one: the checkpoints
+  predate the safety fix and two 20k-step retraining attempts produced no
+  learning. Stage-1 policies sat at 20–33 s where a 60 s static plan sits at
+  11.5 s — same 1200 s episodes, same in-network metric, so those two are
+  comparable to each other but not to the 3600 s numbers above.
+- **Also found:** `sumo-rl` stores `max_green` and never reads it — our
+  `max_green = 60` constrains nothing, which is why the sweep runs past 60 s.
 
 ---
 
@@ -134,6 +188,11 @@ QR-DQN (distributional DQN) is the fourth rung instead.*
 - Fixed-time is **already near-optimal** (0.39 s) — no RL agent beats it.
 - The real result: **all four stay mobile** (no gridlock).
 - DQN is within a hair; A2C is weakest but valid.
+- **This half survives the audit.** At 0.39 s there is no headroom, so nothing is
+  stranded for the metric defect to hide, and the ranking does not depend on the
+  reward the models were trained against. Caveat to state if asked: the baseline
+  here is still the 10 s cycler, and a better static plan would only widen the
+  gap against RL.
 - *Plots:* `results/bars_offpeak_lam05_logy.png` (waiting, log scale — readable)
   and `results/speed_offpeak_lam05.png` (mobility: a2c collapses to 4.75 m/s, the
   rest stay ~10 m/s → all mobile, a2c weakest)
@@ -142,10 +201,15 @@ QR-DQN (distributional DQN) is the fourth rung instead.*
 
 ## Slide 9 — Reading the results honestly
 
-- **Peak:** RL clearly helps — DQN/A2C cut waiting ~24%. **DQN is the overall
-  winner** (best mean, biggest congestion relief).
+- **Peak:** no valid RL result. The standard to beat is **any static plan in the
+  45–90 s green band**, and the Stage-1 policies were **2–3× worse** than it. The cause is structural —
+  amber lost time at a 2-phase junction — not a training budget we can buy.
 - **Off-peak:** the baseline is near-optimal; RL *cannot* beat it — an honest
   **ceiling**, not a failure. All agents stay mobile.
+- **λ ablation:** never run. Only λ = 0.5 exists, so "safety-aware" is in the
+  title and not yet in the results. Say this before anyone asks.
+- **No algorithm winner is claimed.** Ranking four algorithms only means
+  something once one of them beats a competent static plan; none does.
 - **One disclosed asymmetry:** off-peak A2C's hyperparameters were selected on
   *waiting time* rather than the shaped reward. At light demand the `−λ·safety`
   term dominates, so the reward-optimal policy is "never switch" = gridlock;
@@ -205,25 +269,28 @@ emergency brakes, collisions).
 
 - Watch: PCU-weighted queues build and clear; the agent switches phase under mixed
   moto/auto/car traffic. Colour by type — orange moto, blue auto, grey car.
-- **This is a *qualitative* demo — the agent in action.** The headline **−24%**
-  result is an *episode-mean* over a full 3600 s run; read it from the results
-  slides (`bars_peak_lam05.png`, `improvement_peak_lam05.png`), not the clip's
-  instantaneous HUD.
-- Do **not** show a live fixed-time-vs-RL race: a short window can invert the
-  aggregate result (early transient + high DQN seed variance).
+- **This is a *qualitative* demo — the agent in action.** The clip is a Stage-1
+  checkpoint whose peak performance claim is withdrawn: it shows the mechanism,
+  not a result. Do not quote a number off it.
+- Do **not** show a live fixed-time-vs-RL race: the RL side has no valid peak
+  measurement behind it, and a short window proves nothing either way.
 
 ---
 
 ## Slide 14 — Conclusions
 
-- An RL controller with a **PCU-weighted observation** and a **safety-aware
-  reward** beats a fixed-time signal **where it matters — congested peak demand
-  (~24% less waiting).**
-- Under a fair, tuned, multi-seed comparison, **DQN is the most reliable
-  winner**; A2C matches it at peak with tighter variance.
-- Off-peak exposes an honest ceiling: a good fixed plan is hard to beat in light
-  traffic.
+- **At an isolated 2-phase intersection, a competently timed static plan is hard
+  to beat — and we can say why.** Amber lost time dominates at the switching
+  frequency the action space allows, so there is little left for a policy to win.
+- That is a **result about the problem**, not a training failure: one mechanism
+  explains Stage 1, the pilot, and the 20k-step null together.
+- **Off-peak confirms the same ceiling** from the other side — 0.39 s, all four
+  agents mobile, none ahead.
+- The **methodology findings travel further than the controller did** — three of
+  the six defects concern how `sumo-rl` is commonly used, not this codebase.
 - **Next:** multi-intersection corridor with coordinated MARL (prototype built).
+  Coordination across junctions is the one thing a static plan cannot do — which
+  is exactly what the single-intersection finding exposes.
 
 ---
 
