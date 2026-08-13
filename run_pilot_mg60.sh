@@ -52,6 +52,13 @@ throttle() { while [ "$(jobs -rp | wc -l)" -ge "$JOBS" ]; do wait -n 2>/dev/null
 
 train_one() {
   local a="$1" s="$2"
+  # Resumable: three long background runs have been SIGINT'd on this machine,
+  # and completed checkpoints survive a kill. Skipping them means a restart
+  # costs the interrupted run rather than the whole arm. FORCE=1 overrides.
+  local ckpt="models/${a}_peak_lam05_seed${s}_mg${MIN_GREEN}.zip"
+  if [ -f "$ckpt" ] && [ "${FORCE:-0}" != "1" ]; then
+    echo "TRAIN have  $a seed$s (checkpoint exists)"; return 0
+  fi
   if python train.py --algo "$a" --seed "$s" --steps "$STEPS" --scenario peak \
         --lam "$LAM" --defaults --min-green "$MIN_GREEN" \
         > "logs/pilot_train_${a}_seed${s}.log" 2>&1
