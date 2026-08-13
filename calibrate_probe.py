@@ -7,7 +7,10 @@ import numpy as np
 import env_common as ec
 from env_common import make_env
 
-env = make_env(seed=0, scenario="peak", lam=0.0)
+# This probe cycles the phase every decision step, so the action-space floor
+# binds. SAFETY_SCALE (2.1298) was derived at a 10 s floor; pinned so make_env's
+# 60 s training default cannot silently re-scale the reward's safety term.
+env = make_env(seed=0, scenario="peak", lam=0.0, min_green=10)
 env.reset()
 ts = env.unwrapped.traffic_signals[list(env.unwrapped.traffic_signals)[0]]
 effs, safs = [], []

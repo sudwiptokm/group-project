@@ -7,10 +7,16 @@ ranks within each group by mean waiting time.
 
 Filename conventions
 --------------------
-RL algos:    logs/eval_<algo>_<scenario>_lam<LAM>_seed<seed>_conn<N>_ep<M>.csv
-             where <LAM> is the λ float with the dot removed: 0.0→"00", 0.5→"05", 1.0→"10"
+RL algos:    logs/eval_<algo>_<scenario>_lam<LAM>_seed<seed>[_t<n>][_mg<n>]_conn<N>_ep<M>.csv
+             where <LAM> is the λ float with the dot removed: 0.0→"00", 0.5→"05", 1.0→"10",
+             _t<n> is the training seed and _mg<n> the action-space floor
 Fixed-time:  logs/eval_fixedtime_<scenario>_seed<seed>_g<green>_conn<N>_ep<M>.csv
              (NO lam fragment; <green> is the static plan's green duration)
+
+Every optional fragment sits AFTER seed<n> so the globs below stay green- and
+floor-agnostic. That is deliberate: the globs find the runs, and a separate
+warning refuses to average two greens or two floors into one row, rather than
+the glob quietly dropping half of them.
 
 Each run's completed-trip metrics are read from the tripinfo XML beside its
 step CSV (same stem, minus the _conn/_ep suffix — see env_common.tripinfo_path).
@@ -141,6 +147,29 @@ def _warn_mixed_greens(base: pd.DataFrame, scenario: str) -> None:
               "from before baseline.py had --green).")
 
 
+_MIN_GREEN_TAG = re.compile(r"_mg(\d+)[_.]")
+
+
+def _warn_mixed_min_greens(df: pd.DataFrame, scenario: str, entity: str) -> None:
+    """Refuse to average two action spaces into one row.
+
+    `min_green` is not a tuning detail — analysis/actuated.py measures a factor
+    of 5.6 between a 10 s floor and a 60 s one, larger than any difference
+    between algorithms this project has found. Runs at two floors are two
+    experiments, and averaging them is the same class of confound as evaluating
+    agents and baseline on different demand seeds.
+    """
+    if df.empty or "run" not in df:
+        return
+    floors = {(m.group(1) if (m := _MIN_GREEN_TAG.search(r)) else "unset")
+              for r in df["run"]}
+    if len(floors) > 1:
+        print(f"  [!] {scenario}/{entity}: runs mix min_green {sorted(floors)} "
+              "— that row averages different action spaces. Keep one floor per "
+              "logs dir ('unset' = 10 s, from before make_env's default moved "
+              "to 60).")
+
+
 def _departed(scenario: str, horizon: float):
     """Demand the scenario asks for; None if its route file is missing."""
     route = SCENARIO_ROUTES.get(scenario)
@@ -177,6 +206,7 @@ def main():
                 df = _run_means(args.logs, algo, scenario, lam=lam, departed=departed)
                 if df.empty:
                     continue
+                _warn_mixed_min_greens(df, scenario, f"{algo}/lam{lam}")
                 rows.append(_summarise(df, algo, scenario, lam))
             # always add fixed-time row to every (scenario, lam) group for direct comparison
             if not base.empty:

@@ -29,7 +29,8 @@ import sys
 from stable_baselines3.common.monitor import Monitor
 
 from algos import ALGOS, build
-from env_common import make_env
+from env_common import (DEFAULT_MIN_GREEN, eval_csv_stem, make_env,
+                        resolve_min_green)
 
 PARAMS_DIR = "params"
 
@@ -74,13 +75,14 @@ def _materialise(saved: dict) -> dict:
 
 # ----------------------------------------------------------------------------
 def train(algo: str, steps: int, seed: int, use_defaults: bool,
-          scenario: str = "base", lam: float = 0.0):
+          scenario: str = "base", lam: float = 0.0, min_green: int = None):
     os.makedirs("models", exist_ok=True)
     os.makedirs("logs", exist_ok=True)
 
     tag = _tag(scenario, lam)
     env = make_env(seed=seed, scenario=scenario, lam=lam, gui=False,
-                   out_csv=f"logs/{algo}_{tag}_seed{seed}")
+                   out_csv=f"logs/{algo}_{tag}_seed{seed}",
+                   min_green=min_green)
     env = Monitor(env)
 
     params = load_params(algo, use_defaults, scenario=scenario)
@@ -94,19 +96,20 @@ def train(algo: str, steps: int, seed: int, use_defaults: bool,
 
 
 def evaluate(algo: str, model_path: str, seed: int, gui: bool,
-             scenario: str = "base", lam: float = 0.0, train_seed: int = None):
+             scenario: str = "base", lam: float = 0.0, train_seed: int = None,
+             min_green: int = None):
     tag = _tag(scenario, lam)
-    # `seed` is the DEMAND seed. Without train_seed the name carries no trace of
-    # which checkpoint produced it, so evaluating several training seeds on one
-    # demand seed silently overwrites the same CSV. The "_t<n>" suffix sits
-    # after "seed<n>" so compare.py's eval_<algo>_<tag>_seed*.csv glob still hits.
-    stem = f"logs/eval_{algo}_{tag}_seed{seed}"
-    if train_seed is not None:
-        stem += f"_t{train_seed}"
+    # `seed` is the DEMAND seed; train_seed names the checkpoint; min_green names
+    # the action space. All three go in the filename, after "seed<n>" so
+    # compare.py's eval_<algo>_<tag>_seed*.csv glob still hits -- see
+    # env_common.eval_csv_stem for why each one has to be there.
+    min_green = resolve_min_green(min_green)
+    stem = eval_csv_stem(algo, tag, seed, train_seed=train_seed,
+                         min_green=min_green)
     # tripinfo on: evaluation is the one place completed-trip delay/throughput
     # is needed, and it is a single episode so nothing overwrites it
     env = make_env(seed=seed, scenario=scenario, lam=lam, gui=gui, out_csv=stem,
-                   tripinfo=True)
+                   tripinfo=True, min_green=min_green)
     model = ALGOS[algo]["cls"].load(model_path)
     obs, _ = env.reset()
     done = False
@@ -142,11 +145,18 @@ if __name__ == "__main__":
     p.add_argument("--train-seed", type=int, default=None,
                    help="seed the evaluated checkpoint was trained with; tags the "
                         "eval CSV so several checkpoints can share a demand seed")
+    p.add_argument("--min-green", type=int, default=None,
+                   help=f"shortest green before a switch is honoured, in seconds "
+                        f"(default {DEFAULT_MIN_GREEN}, or $MIN_GREEN). This is "
+                        "the action space, not a tuning detail: at 10 s even a "
+                        "non-learning controller is 5.6x worse than a fixed plan "
+                        "— see docs/FINDINGS_2026-08-12.md")
     args = p.parse_args()
 
     if args.eval:
         evaluate(args.algo, args.eval, seed=args.seed, gui=args.gui,
-                 scenario=args.scenario, lam=args.lam, train_seed=args.train_seed)
+                 scenario=args.scenario, lam=args.lam, train_seed=args.train_seed,
+                 min_green=args.min_green)
     else:
         train(args.algo, steps=args.steps, seed=args.seed, use_defaults=args.defaults,
-              scenario=args.scenario, lam=args.lam)
+              scenario=args.scenario, lam=args.lam, min_green=args.min_green)

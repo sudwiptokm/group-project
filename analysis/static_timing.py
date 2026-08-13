@@ -40,7 +40,13 @@ def run(green: int, seed: int, teleport: int = 300) -> dict:
     os.makedirs(OUT, exist_ok=True)
     csv = os.path.join(OUT, f"g{green}_seed{seed}")
     env = make_env(seed=seed, scenario="peak", lam=0.0, gui=False, out_csv=csv,
-                   teleport=teleport, tripinfo=True)
+                   teleport=teleport, tripinfo=True,
+                   # The sweep sets the green itself and runs points below 60,
+                   # so it must not inherit make_env's 60 s training default --
+                   # that would clamp 10/20/30/45 into identical 60 s plans and
+                   # silently erase the low end of the curve this result rests
+                   # on. 10 is what the published sweep ran with.
+                   min_green=10)
 
     hold = max(1, green // 5)          # decision steps per green (delta_time=5)
     obs, _ = env.reset()

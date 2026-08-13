@@ -32,6 +32,10 @@ import os
 from env_common import make_env
 
 DEFAULT_GREEN = 60   # mid-plateau of the peak sweep (analysis/static_timing.py)
+# A static plan supplies its own green, so it wants the loosest floor the
+# environment allows -- not make_env's training default. Pinned rather than
+# inherited so a change to that default can never rewrite the baseline.
+STATIC_PLAN_MIN_GREEN = 10
 
 
 def run_baseline(scenario: str, seed: int, green: int = DEFAULT_GREEN,
@@ -40,7 +44,13 @@ def run_baseline(scenario: str, seed: int, green: int = DEFAULT_GREEN,
     csv = f"logs/eval_fixedtime_{scenario}_seed{seed}_g{green}"
     # lam=0 -> reward term irrelevant here; we never learn, just cycle phases
     env = make_env(seed=seed, scenario=scenario, lam=0.0, gui=False, out_csv=csv,
-                   teleport=teleport, tripinfo=True)
+                   teleport=teleport, tripinfo=True,
+                   # This controller sets its own green, so the action-space
+                   # floor must not clamp it: make_env now defaults to 60, which
+                   # would turn every --green below 60 into a 60 s plan and
+                   # quietly flatten the low end of the static sweep. 10 is what
+                   # the published sweep ran with.
+                   min_green=STATIC_PLAN_MIN_GREEN)
 
     # decision steps to hold one green; the env clamps to min_green/max_green
     hold = max(1, green // env.delta_time)
