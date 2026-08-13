@@ -143,6 +143,48 @@ $$ \text{reward} = \Delta\,\text{waiting\_time} \; - \; \lambda \cdot \frac{\tex
 
 ---
 
+## Peak — "our RL failed" or "nothing to find"?
+
+The static result fits both, and **more training separates neither** — a second null is consistent with each. So we tested it with a controller that has *nothing to learn*: queue-actuated, perfect queue information, no reward, no sample budget. If **it** can't beat the best static plan, the headroom isn't there.
+
+<div class="columns" style="display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start;">
+<div>
+
+| `min_green` | delay / trip | trips done | vs static 60 s |
+|---|--:|--:|--:|
+| <span class="red">**10**</span> | <span class="red">517.5 ± 208.4</span> | <span class="red">2925</span> | <span class="red">+426, 0/5</span> |
+| 20 | 337.0 ± 220.5 | 3455 | +245, 1/5 |
+| 30 | 186.1 ± 108.0 | 3876 | +94, 1/5 |
+| 45 | 161.9 ± 64.2 | 4022 | +70, 1/5 |
+| **60** | **82.5 ± 10.1** | **4156** | **−9.3, 3/5** |
+| 75 | 92.2 ± 0.9 | 4119 | +0.4, 1/5 |
+| 90 | 118.7 ± 23.7 | 4038 | +27, 0/5 |
+
+</div>
+<div>
+
+**`min_green` was the binding constraint — not the algorithm.**
+
+At the **10 s floor this project ran on**, a controller that *cannot* be under-trained is <span class="red">**5.6× worse**</span> than a fixed plan and strands a quarter of the traffic. 125–168 switches/episode × 3 s amber.
+
+**The whole peak training budget was spent where nothing can win.**
+
+</div>
+</div>
+
+**Read the 60 s row honestly:** −9.3 s is **inside the noise** (paired sd 23.9 s). The mean is not the finding — <span class="green">consistency</span> is:
+
+| | delay sd | trips completed |
+|---|--:|--:|
+| static 60 s | 19.9 s | 3834–4162 (spread **328**) |
+| actuated, `min_green` 60 | 10.1 s | 4142–4177 (spread **35**) |
+
+Static's bad draw is seed 43 (126.3 s, 3834 trips); actuated takes that seed at 83.1 s, 4146 trips. **The adaptive gain is not a lower mean — it's not having a bad seed.**
+
+<span class="small">So: neither "we failed" nor "nothing exists". At `min_green` = 10 there was nothing to find; at 60 there is, but it's a ~10% variance reduction a *non-learning* controller already collects. **The bar RL must clear is the actuated controller (82.5 ± 10.1 s), not the static plan.** Reproduce: `analysis/actuated.py`, `analysis/headroom.py`; rows in `analysis/actuated_sweep.csv`.</span>
+
+---
+
 ## Results — off-peak demand (light traffic)
 
 <div class="columns" style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; align-items:center;">
@@ -174,6 +216,7 @@ Fixed-time is **already near-optimal** (0.39 s) — no RL agent can improve on i
 ## Reading the results honestly
 
 - **Peak:** no valid RL result. The standard to beat is **any static plan in the 45–90 s green band**, and Stage-1 policies were **2–3× worse** than it. The cause is structural — amber lost time at a 2-phase junction — not a training budget we can buy our way out of.
+- **`min_green` = 10 was the binding constraint**, and we measured it: a controller that learns nothing is **5.6× worse** than the fixed plan at that floor, and matches it at 60 s. The peak null is **over-determined** — the budget was spent where no controller can win. Fix the floor first; the bar afterwards is the **actuated controller**, not the static plan.
 - **Off-peak:** the baseline is near-optimal; RL *cannot* beat it — the honest finding is a **ceiling**, not a failure. All agents stay mobile.
 - **λ ablation:** never run. Only λ = 0.5 exists — "safety-aware" is in the title and not yet in the results.
 - **One disclosed asymmetry:** off-peak A2C's hyperparameters were selected on *waiting time* rather than the shaped reward. At light demand the `−λ·safety` term dominates, so the reward-optimal policy is "never switch" = gridlock. Tuning on waiting time rejects that collapse. Training reward, env, and eval stay identical across all algorithms.
@@ -216,7 +259,9 @@ Fixed-time is **already near-optimal** (0.39 s) — no RL agent can improve on i
 
 **Also found:** sumo-rl stores `max_green` and never reads it, so the `max_green = 60` in our env constrains nothing — for the static sweep or for a learned policy.
 
-**Next, in order:** (1) give the agent a policy space worth searching — raise `min_green`, add a protected left phase, or move to the corridor env; (2) *then* run the λ ablation, which has never been run. More training on the current action space is not the missing ingredient.
+**Also found:** a non-learning queue-actuated controller settles the "did our RL fail, or is there nothing to find?" question — see the headroom slide.
+
+**Next, in order:** (1) **raise `min_green` to 60 s** — measured, not guessed — and retrain there; (2) score it against the **actuated controller** (82.5 ± 10.1 s), not the static plan, since tying a policy that needs no training proves nothing; (3) *then* run the λ ablation, which has never been run. More training on the **current** action space is not the missing ingredient — and even on a corrected one the prize is ~10%, which is the argument for the corridor.
 
 ---
 

@@ -175,6 +175,52 @@ Peak 1.5×, seeds 42–46, 3600 s episodes, `--time-to-teleport 300`
 
 ---
 
+## Slide 7c — Did our RL fail, or was there nothing to find?
+
+The static result fits both readings, and **more training separates neither** — a
+second null is consistent with each. So we tested it with a controller that has
+nothing to learn: **queue-actuated**, perfect queue information, no reward, no
+credit assignment, no sample budget. If *it* cannot beat the best static plan,
+the headroom is not there.
+
+| `min_green` (s) | delay / completed trip | trips done | vs static 60 s, paired |
+|---|--:|--:|--:|
+| **10** | 517.5 ± 208.4 | 2925 | +426, wins 0/5 |
+| 20 | 337.0 ± 220.5 | 3455 | +245, wins 1/5 |
+| 30 | 186.1 ± 108.0 | 3876 | +94, wins 1/5 |
+| 45 | 161.9 ± 64.2 | 4022 | +70, wins 1/5 |
+| **60** | **82.5 ± 10.1** | **4156** | **−9.3, wins 3/5** |
+| 75 | 92.2 ± 0.9 | 4119 | +0.4, wins 1/5 |
+| 90 | 118.7 ± 23.7 | 4038 | +27, wins 0/5 |
+
+Peak 1.5×, seeds 42–46, 3600 s episodes, `--time-to-teleport 300`
+(`analysis/actuated.py` + `analysis/headroom.py`; rows in
+`analysis/actuated_sweep.csv`).
+
+- **`min_green` was the binding constraint — not the algorithm.** At the 10 s
+  floor this project trained on, a controller that *cannot* be accused of
+  under-training is **5.6× worse** than a fixed plan and strands a quarter of the
+  traffic (2925 trips vs 4076; 2008 on the worst seed). It requests **125–168
+  switches per episode** against 38–60 at a 75–90 s floor, each costing 3 s of
+  amber. **The entire peak training budget was spent where no controller can
+  win** — which is why the peak null is over-determined.
+- **The curve is U-shaped and has turned by 90 s**, so 60 s is an interior
+  optimum, not "longer is always better".
+- **Read the 60 s row honestly.** −9.3 s against the static plan is *inside the
+  noise* — the paired difference has sd 23.9 s. The mean is not the finding.
+  What is resolvable is consistency: delay sd **10.1 s vs 19.9 s**, and trips
+  completed **4142–4177 (spread 35) vs 3834–4162 (spread 328)**. Static's bad
+  draw is seed 43 (126.3 s, 3834 trips); actuated takes that seed at 83.1 s and
+  4146 trips. **The adaptive gain is not a lower mean — it is not having a bad
+  seed.**
+- **So: neither "we failed" nor "nothing exists".** At `min_green` = 10 there was
+  nothing to find; at 60 there is, but it is a ~10% variance reduction that a
+  *non-learning* controller already collects. **The bar RL has to clear is the
+  actuated controller (82.5 ± 10.1 s), not the static plan** — and by enough to
+  beat a 24 s paired sd.
+
+---
+
 ## Slide 8 — Results: off-peak demand (light traffic)
 
 | Algorithm | Mean wait (s) | ± std | Speed (m/s) |
@@ -204,6 +250,11 @@ Peak 1.5×, seeds 42–46, 3600 s episodes, `--time-to-teleport 300`
 - **Peak:** no valid RL result. The standard to beat is **any static plan in the
   45–90 s green band**, and the Stage-1 policies were **2–3× worse** than it. The cause is structural —
   amber lost time at a 2-phase junction — not a training budget we can buy.
+- **`min_green` = 10 was the binding constraint, and we measured it.** A
+  controller that learns nothing is 5.6× worse than the fixed plan at that floor
+  and matches it at 60 s, so the peak null is **over-determined**. Fix the floor
+  before retraining anything; afterwards the bar is the **actuated controller**
+  (82.5 ± 10.1 s), not the static plan — and even then the prize is ~10%.
 - **Off-peak:** the baseline is near-optimal; RL *cannot* beat it — an honest
   **ceiling**, not a failure. All agents stay mobile.
 - **λ ablation:** never run. Only λ = 0.5 exists, so "safety-aware" is in the

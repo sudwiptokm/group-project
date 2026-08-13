@@ -113,6 +113,64 @@ Two structural notes on the action space, both measured:
   close to "hold a long green and alternate". A learned controller has very
   little left to win. That is a result about the problem, not a training failure.
 
+### Was there anything for an adaptive controller to win?
+
+The section above asserts there is little left to win. That assertion is testable
+without training anything, and it was tested. A static plan beating every learned
+policy is consistent with two readings — our RL failed to find an adaptive policy
+that exists, or no such policy exists here — and no amount of further training
+separates them, because another null fits both.
+
+A non-learning controller does separate them. `analysis/actuated.py` runs the
+classic queue-actuated policy: each decision step, serve whichever green phase
+has the largest PCU-weighted queue on the lanes it discharges, subject to
+`min_green`. It has perfect queue information, no reward to misspecify, no credit
+assignment problem and no sample budget. If it cannot beat the best static plan,
+the headroom is not there.
+
+Peak 1.5×, seeds 42–46, 3600 s episodes, teleport 300, paired against the static
+60 s plan on the same seeds — `analysis/headroom.py`, rows in
+`analysis/actuated_sweep.csv`:
+
+| `min_green` (s) | delay per completed trip (s) | trips completed | vs static 60 s, paired | seeds beaten |
+|---|---:|---:|---:|---:|
+| **10** | 517.5 ± 208.4 | 2925 | +425.7 ± 217.5 | 0/5 |
+| 20 | 337.0 ± 220.5 | 3455 | +245.3 ± 228.9 | 1/5 |
+| 30 | 186.1 ± 108.0 | 3876 | +94.3 ± 115.3 | 1/5 |
+| 45 | 161.9 ± 64.2 | 4022 | +70.2 ± 66.3 | 1/5 |
+| **60** | **82.5 ± 10.1** | **4156** | **−9.3 ± 23.9** | **3/5** |
+| 75 | 92.2 ± 0.9 | 4119 | +0.4 ± 20.8 | 1/5 |
+| 90 | 118.7 ± 23.7 | 4038 | +26.9 ± 24.5 | 0/5 |
+
+**`min_green` is the binding constraint, not the algorithm.** At the 10 s floor
+this project ran, a controller that cannot be accused of under-training is 5.6×
+worse than a fixed plan and strands a quarter of the traffic — 2925 trips against
+4076, and only 2008 on the worst seed. It requests 125–168 switches per episode
+against 38–60 at a 75–90 s floor, and each one costs 3 s of amber. The sweep is
+U-shaped and has turned by 90 s, so 60 s is an interior optimum, not "longer is
+better".
+
+**Read the 60 s row honestly.** −9.3 s is inside the noise: the paired difference
+has an sd of 23.9 s over five seeds. The mean is not the finding. What is
+resolvable is consistency:
+
+| | delay sd | trips completed |
+|---|---:|---:|
+| static 60 s plan | 19.9 s | 3834–4162 (spread 328) |
+| actuated, `min_green` 60 | 10.1 s | 4142–4177 (spread **35**) |
+
+The static plan's bad draw is seed 43 (126.3 s, 3834 trips); the actuated
+controller takes that same seed at 83.1 s and 4146 trips. The adaptive gain is
+not a lower mean — it is not having a bad seed.
+
+So the answer is neither reading cleanly. At `min_green` = 10 there was nothing
+for a learned controller to find, and that is where this project spent its entire
+training budget, which makes the peak null over-determined. At `min_green` = 60
+there is something, but it is a ~10% variance reduction that a policy needing no
+training already collects. **The reference a learned controller has to beat is
+therefore the actuated controller at a matched floor (82.5 ± 10.1 s), not the
+static plan** — and it has to beat it by enough to clear a 24 s paired sd.
+
 ### The withdrawn peak claim
 
 Previously reported, and now withdrawn in full:
@@ -184,6 +242,13 @@ objective fix in the footnote below.
   it — a plan that needed no tuning to find. The reason is
   structural — amber lost time at a 2-phase junction — not a training-budget
   artefact.
+- **The constraint that mattered was `min_green` = 10, not the algorithm.** A
+  non-learning queue-actuated controller is 5.6× worse than the fixed plan at
+  that floor and matches it at 60 s. So the peak null is over-determined: the
+  whole training budget was spent in a region where no controller can win. At a
+  60 s floor there *is* adaptive headroom, but it is a ~10% variance reduction,
+  inside the seed noise on the mean, and collected by a controller that learns
+  nothing.
 - **Off-peak:** fixed-time is near-optimal; RL cannot improve on it; all four
   agents stay mobile; a2c is the weakest.
 - **λ ablation:** never run. "Safety-aware" is in the title and not in the
@@ -201,6 +266,8 @@ python -m analysis.tripinfo logs/eval_fixedtime_peak_seed42_g60_tripinfo.xml \
     --route-file traffic_peak.rou.xml
 python compare.py                        # ranks on delay per completed trip
 python analysis/static_timing.py --green 60 --seed 42   # one sweep point
+python analysis/actuated.py --min-green 60 --seed 42    # one actuated run
+python analysis/headroom.py              # actuated vs best static, paired
 python analysis/paired.py                # per-seed pairing of the Stage-1 runs
 ```
 

@@ -26,6 +26,10 @@ results/*.png
 # analysis/static_sweep.csv, IS tracked.
 analysis/static_logs/
 
+# Same for the actuated-controller headroom probe. The aggregate the results
+# cite, analysis/actuated_sweep.csv, IS tracked.
+analysis/actuated_logs/
+
 # Local crash-insurance snapshots + helper (not part of the experiment)
 backups/
 backup_loop.sh
@@ -37,6 +41,3 @@ archive_stage1_peak/
 # Presentation media (large, regenerable by presentation/capture_demo*.py)
 presentation/*.mp4
 presentation/*.pdf
-
-# Per-run output of the actuated-controller probe (same reasoning as static_logs)
-analysis/actuated_logs/

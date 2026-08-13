@@ -44,6 +44,40 @@ Measurement changes already made: ranking is now delay per completed trip plus
 throughput and completion rate (from SUMO tripinfo), the baseline is a swept
 static plan rather than a cycler, and baselines run on the agents' own seeds.
 
+One further result, and it is the one I would lead with. "A static plan beats our
+agents" is consistent with two different stories - we failed to find an adaptive
+policy that exists, or there is none to find at this junction - and no amount of
+extra training separates them, because a second null fits both. So I tested it
+with a controller that has nothing to learn: a standard queue-actuated
+controller, perfect queue information, no reward, no training. Sweeping its
+minimum green at peak (seeds 42-46, paired against the 60 s static plan):
+
+  min green 10 s   517.5 s delay,  2925 trips   (+426 vs static, wins 0/5)
+  min green 60 s    82.5 s delay,  4156 trips   ( -9.3 vs static, wins 3/5)
+  min green 90 s   118.7 s delay,  4038 trips   ( +27 vs static, wins 0/5)
+
+The minimum green was the binding constraint, not the algorithm. At the 10 s
+floor we actually trained on, a controller that cannot be accused of
+under-training is 5.6x worse than a fixed plan and leaves a quarter of the
+traffic unserved. In other words our entire peak training budget was spent in a
+region of the action space where no controller can win, which makes that null
+over-determined rather than informative about RL.
+
+I want to be equally sceptical about the good row. At a 60 s floor the actuated
+controller beats the static plan by 9.3 s, but the paired difference has a
+standard deviation of 23.9 s - that is inside the noise, and I am not claiming it
+as an improvement in the mean. What is resolvable is consistency: it completes
+4142-4177 trips across seeds where the static plan spans 3834-4162. The adaptive
+gain is not a lower average, it is the absence of a bad seed.
+
+So the practical recommendation changes from a guess to a measurement: raise the
+minimum green to 60 s before retraining anything, and score whatever comes out
+against the actuated controller rather than the static plan, since matching a
+policy that needs no training would prove nothing. It also sets expectations
+honestly - even with the floor corrected the available margin here is around ten
+per cent, which is the strongest argument I have for moving to the corridor
+setting rather than continuing to optimise this junction.
+
 Off-peak, unchanged:
   fixed-time 0.39   (baseline, already near-optimal)
   DQN        0.48

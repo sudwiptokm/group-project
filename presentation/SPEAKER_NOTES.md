@@ -84,6 +84,17 @@ Target: **~10–12 min** talk. Time budgets below sum to ~11 min. Leave slack fo
 - Say there is **no valid RL row** and we are not inventing one — the checkpoints predate the safety fix and two retraining attempts produced no learning. Stage-1 policies sat at 20–33 s where a 60 s static plan sits at 11.5 s.
 - Worth a sentence if you have time: `sumo-rl` stores `max_green` and never reads it, so our `max_green = 60` constrained nothing — which is why the sweep runs past 60 s instead of stopping there.
 
+## Slide 7c — Did our RL fail, or was there nothing to find? *(~2 min · Sudwipto)*
+- **Open with the question, not the table.** "A static plan beating our agents fits two stories: we failed to find an adaptive policy, or there isn't one here. More training can't tell them apart — a second null fits both. So we tested it with a controller that has nothing to learn."
+- Describe the control in one breath: **queue-actuated** — serve whichever phase has the biggest PCU-weighted queue, subject to `min_green`. Perfect queue information, no reward to misspecify, no credit assignment, no sample budget. **If it can't beat the best static plan, the headroom isn't there.**
+- **The headline is the 10 s row, and it's about us.** At the floor we actually trained on, a controller that *cannot* be accused of under-training is **5.6× worse** than the fixed plan and strands a quarter of the traffic. 125–168 switches an episode, 3 s of amber each. Land the consequence: **our entire peak training budget was spent in a region where no controller can win.** The peak null was over-determined.
+- Note the curve **turns by 90 s** — 60 s is an interior optimum, not "longer is always better". Pre-empts "so why not just make the green enormous?"
+- **Then do to your own result what you did to Stage 1's.** −9.3 s at 60 s looks like a win; the paired sd is 23.9 s, so it is *inside the noise*. Say it before the panel does. **The mean is not the finding.**
+- **What is resolvable is consistency:** delay sd 10.1 vs 19.9, and trips completed 4142–4177 (spread **35**) against static's 3834–4162 (spread **328**). Static's bad draw is seed 43 — 126.3 s, 3834 trips; actuated takes that same seed at 83.1 s and 4146 trips. One line to remember: **the adaptive gain is not a lower mean, it's not having a bad seed.**
+- **Closing line:** neither "we failed" nor "nothing exists". At `min_green` = 10 there was nothing to find; at 60 there is, but it's a ~10% variance reduction a controller that learns nothing already collects. **So the bar for RL is the actuated controller, not the static plan.**
+- If asked "why not max-pressure?" → it needs downstream occupancy and would measure something different on approaches this short; queue-actuated is the standard non-learning reference for a 2-phase junction.
+- If asked "doesn't this kill the project?" → it does the opposite: it converts our main recommendation from a guess into a measurement. We were choosing between three fixes; now we know which one and by how much.
+
 ## Slide 8 — Results: off-peak demand *(~1.5 min · Aleana)*
 - Flip the story: off-peak is light, fixed-time is **already near-optimal at 0.39 s** — no RL agent beats it.
 - The real result: **all four stay mobile — no gridlock.** DQN is within a hair (0.48 s).
@@ -93,6 +104,7 @@ Target: **~10–12 min** talk. Time budgets below sum to ~11 min. Leave slack fo
 
 ## Slide 9 — Reading the results honestly *(~1.5 min · Aleana)*
 - Peak: **no valid RL result**, and the standard to beat is any static plan in the 45–90 s band. Do not soften this into "mixed results".
+- Add the headroom finding in one sentence: **`min_green` = 10 was the binding constraint, not the algorithm** — a controller that learns nothing is 5.6× worse than the fixed plan at that floor and matches it at 60 s. That makes the peak null over-determined and tells us exactly what to fix first.
 - Off-peak: an honest **ceiling, not a failure** — a good fixed plan is genuinely hard to beat in light traffic. All agents stay mobile.
 - Say the two together: **the ceiling is the same ceiling in both regimes**, and at peak we can now name the mechanism behind it.
 - Volunteer the λ gap before anyone finds it: only λ = 0.5 was ever run, so "safety-aware" is in the title and not yet in the results. The sweep driver is written and ready.
@@ -199,9 +211,10 @@ Scope — we deliberately bounded the project to one junction to run a rigorous,
 ## Fast-reference numbers (memorise)
 - **Peak, current:** static plan at 60 s (mid-plateau) = **91.8 ± 19.9 s delay per completed trip**, 4076 trips, **94.3%** of demand completed, 14.97 s in-network wait. No valid RL row. Plateau = **45–90 s**; paired differences ±13 s against a ~30 s seed spread.
 - **Peak, withdrawn:** fixed-time 1319 s, DQN/A2C 1003 s (−24%), PPO +2.8%, QR-DQN +6.2%. Quote these **only** as the numbers being withdrawn. Paired per seed they become +56.9 / +67.6 / +118 / +123%.
-- **Amber arithmetic:** 3 s yellow → 23% of the cycle lost at a 10 s green, 4.8% at 60 s. Decisions every 5 s, `min_green` 10 s.
+- **Actuated headroom probe:** queue-actuated, non-learning. `min_green` 10 = **517.5 ± 208.4 s**, 2925 trips (**5.6×** the static plan, +426 paired, wins 0/5); `min_green` **60 = 82.5 ± 10.1 s**, 4156 trips, −9.3 paired, wins 3/5; 75 = 92.2, 90 = 118.7 (curve turns). Robustness is the real gain: trips **4142–4177 (spread 35)** vs static **3834–4162 (spread 328)**; delay sd 10.1 vs 19.9. Seed 43: static 126.3 s / 3834 trips, actuated 83.1 s / 4146 trips. **−9.3 s is inside the noise — paired sd 23.9 s.**
+- **Amber arithmetic:** 3 s yellow → 23% of the cycle lost at a 10 s green, 4.8% at 60 s. Decisions every 5 s, `min_green` 10 s. Switch requests: 125–168/episode at a 10 s floor vs 38–60 at 75–90 s.
 - **The 4× gap:** same peak runs, 14.97 s in-network vs 66.4 s waiting per completed trip — survivorship bias, measured.
 - Off-peak fixed-time: **0.39 s**. DQN **0.48 s**, PPO 1.76 s, QR-DQN 1.99 s, A2C 36 s (mobile, 4.75 m/s). Unaffected by the audit.
 - PCU weights: moto **0.3** / auto **0.5** / car **1.0**. Safety weights: moto **1.0** / auto **0.6** / car **0.3**.
 - Vehicle mix: 60/25/15% moto/auto/car. Reference **λ = 0.5**. Reward = `Δwaiting − λ·(safety/SCALE)`.
-- Winner: **DQN** (best mean + biggest relief). A2C = tighter peak variance, weakest off-peak.
+- **No winner is claimed.** The old "winner: DQN, best mean + biggest relief" line came from the withdrawn peak table — do not use it. Off-peak DQN is closest to the baseline (0.48 s vs 0.39 s) but does not beat it, and at peak there is no valid RL row at all. Ranking four algorithms only means something once one of them beats a competent static plan, and none does.
