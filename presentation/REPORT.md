@@ -199,6 +199,10 @@ Peak 1.5×, seeds 42–46, 3600 s episodes, `--time-to-teleport 300`, paired aga
 | 75 | 92.2 ± 0.9 | 4119 | +0.4 ± 20.8 | 1/5 |
 | 90 | 118.7 ± 23.7 | 4038 | +26.9 ± 24.5 | 0/5 |
 
+![Static plan against the queue-actuated controller at peak demand](../results/headroom_peak.png)
+
+The figure (`analysis/plot_headroom.py`) places both controllers on a single axis. The shared x is one constraint seen from two sides: for the static plan it is the green held per phase, for the actuated controller the floor below which a switch request is ignored. Both series are delay per completed trip over the same seeds, so this is one scale rather than two, and the lower panel carries completion for both.
+
 **The minimum green is the binding constraint, not the choice of algorithm.** At the 10 s floor this project trained and evaluated on, a controller with perfect queue information and nothing to learn performs 5.6 times worse than a fixed plan, and leaves a quarter of the demand unserved — 2925 completed trips against the static plan's 4076, and 2008 on the worst seed. It issues 125–168 phase switches per episode against 38–60 at a 75–90 s floor, each costing three seconds of clearance. The sweep is U-shaped and has turned by 90 s, so 60 s is an interior optimum rather than a monotone preference for longer greens.
 
 **The 60 s row requires the same discipline as §4.1.2.** A −9.3 s advantage over the static plan sits inside the noise: the paired difference has a standard deviation of 23.9 s across five seeds. The mean is not the result. What is resolvable is consistency:

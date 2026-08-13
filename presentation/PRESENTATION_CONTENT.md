@@ -195,7 +195,9 @@ the headroom is not there.
 
 Peak 1.5×, seeds 42–46, 3600 s episodes, `--time-to-teleport 300`
 (`analysis/actuated.py` + `analysis/headroom.py`; rows in
-`analysis/actuated_sweep.csv`).
+`analysis/actuated_sweep.csv`). *Plot:* `results/headroom_peak.png`
+(`analysis/plot_headroom.py`) — both controllers on one axis, the static plan
+against the actuated one, delay above and completion below.
 
 - **`min_green` was the binding constraint — not the algorithm.** At the 10 s
   floor this project trained on, a controller that *cannot* be accused of

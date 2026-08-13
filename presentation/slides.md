@@ -147,7 +147,7 @@ $$ \text{reward} = \Delta\,\text{waiting\_time} \; - \; \lambda \cdot \frac{\tex
 
 The static result fits both, and **more training separates neither** — a second null is consistent with each. So we tested it with a controller that has *nothing to learn*: queue-actuated, perfect queue information, no reward, no sample budget. If **it** can't beat the best static plan, the headroom isn't there.
 
-<div class="columns" style="display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start;">
+<div class="columns" style="display:grid; grid-template-columns: 1.05fr 1fr; gap:18px; align-items:center;">
 <div>
 
 | `min_green` | delay / trip | trips done | vs static 60 s |
@@ -160,14 +160,12 @@ The static result fits both, and **more training separates neither** — a secon
 | 75 | 92.2 ± 0.9 | 4119 | +0.4, 1/5 |
 | 90 | 118.7 ± 23.7 | 4038 | +27, 0/5 |
 
+**`min_green` was the binding constraint — not the algorithm.** At the **10 s floor this project ran on**, a controller that *cannot* be under-trained is <span class="red">**5.6× worse**</span> than a fixed plan. 125–168 switches/episode × 3 s amber. **The whole peak training budget was spent where nothing can win.**
+
 </div>
 <div>
 
-**`min_green` was the binding constraint — not the algorithm.**
-
-At the **10 s floor this project ran on**, a controller that *cannot* be under-trained is <span class="red">**5.6× worse**</span> than a fixed plan and strands a quarter of the traffic. 125–168 switches/episode × 3 s amber.
-
-**The whole peak training budget was spent where nothing can win.**
+![w:520](../results/headroom_peak.png)
 
 </div>
 </div>
@@ -181,7 +179,7 @@ At the **10 s floor this project ran on**, a controller that *cannot* be under-t
 
 Static's bad draw is seed 43 (126.3 s, 3834 trips); actuated takes that seed at 83.1 s, 4146 trips. **The adaptive gain is not a lower mean — it's not having a bad seed.**
 
-<span class="small">So: neither "we failed" nor "nothing exists". At `min_green` = 10 there was nothing to find; at 60 there is, but it's a ~10% variance reduction a *non-learning* controller already collects. **The bar RL must clear is the actuated controller (82.5 ± 10.1 s), not the static plan.** Reproduce: `analysis/actuated.py`, `analysis/headroom.py`; rows in `analysis/actuated_sweep.csv`.</span>
+<span class="small">So: neither "we failed" nor "nothing exists". At `min_green` = 10 there was nothing to find; at 60 there is, but it's a ~10% variance reduction a *non-learning* controller already collects. **The bar RL must clear is the actuated controller (82.5 ± 10.1 s), not the static plan.** Reproduce: `analysis/actuated.py`, `analysis/headroom.py`; rows in `analysis/actuated_sweep.csv`; figure `analysis/plot_headroom.py`.</span>
 
 ---
 
