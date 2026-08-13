@@ -142,6 +142,13 @@ Peak 1.5×, seeds 42–46, 3600 s episodes, teleport 300, paired against the sta
 | 75 | 92.2 ± 0.9 | 4119 | +0.4 ± 20.8 | 1/5 |
 | 90 | 118.7 ± 23.7 | 4038 | +26.9 ± 24.5 | 0/5 |
 
+![Static plan vs queue-actuated controller at peak](../results/headroom_peak.png)
+
+Both controllers on one axis (`analysis/plot_headroom.py`): the x is the same
+constraint seen from two sides — the green a static plan holds, and the floor
+below which the actuated controller's switch requests are ignored. Same metric,
+same seeds. The argument is at the left-hand end, not the crossover.
+
 **`min_green` is the binding constraint, not the algorithm.** At the 10 s floor
 this project ran, a controller that cannot be accused of under-training is 5.6×
 worse than a fixed plan and strands a quarter of the traffic — 2925 trips against

@@ -94,6 +94,7 @@ Target: **~10–12 min** talk. Time budgets below sum to ~11 min. Leave slack fo
 - **Closing line:** neither "we failed" nor "nothing exists". At `min_green` = 10 there was nothing to find; at 60 there is, but it's a ~10% variance reduction a controller that learns nothing already collects. **So the bar for RL is the actuated controller, not the static plan.**
 - If asked "why not max-pressure?" → it needs downstream occupancy and would measure something different on approaches this short; queue-actuated is the standard non-learning reference for a 2-phase junction.
 - If asked "doesn't this kill the project?" → it does the opposite: it converts our main recommendation from a guess into a measurement. We were choosing between three fixes; now we know which one and by how much.
+- **Reading the plot** (`results/headroom_peak.png`): both controllers on one x axis — for the static plan it is the green it holds, for the actuated one its `min_green` floor. Same y, delay per completed trip, same seeds. Point at the **left-hand end, not the crossover**: that is where the argument is. The lower panel is completion, and it shows both controllers stranding traffic below ~45 s.
 
 ## Slide 8 — Results: off-peak demand *(~1.5 min · Aleana)*
 - Flip the story: off-peak is light, fixed-time is **already near-optimal at 0.39 s** — no RL agent beats it.

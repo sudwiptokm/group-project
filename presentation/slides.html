@@ -381,7 +381,7 @@ section.lead h1 { font-size: 46px; }
 <header>RL Traffic Signal Control — Group 7</header>
 <h2 id="peak--our-rl-failed-or-nothing-to-find">Peak — &quot;our RL failed&quot; or &quot;nothing to find&quot;?</h2>
 <p>The static result fits both, and <strong>more training separates neither</strong> — a second null is consistent with each. So we tested it with a controller that has <em>nothing to learn</em>: queue-actuated, perfect queue information, no reward, no sample budget. If <strong>it</strong> can't beat the best static plan, the headroom isn't there.</p>
-<div class="columns" style="display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start;">
+<div class="columns" style="display:grid; grid-template-columns: 1.05fr 1fr; gap:18px; align-items:center;">
 <div>
 <table>
 <thead>
@@ -437,11 +437,10 @@ section.lead h1 { font-size: 46px; }
 </tr>
 </tbody>
 </table>
+<p><strong><code>min_green</code> was the binding constraint — not the algorithm.</strong> At the <strong>10 s floor this project ran on</strong>, a controller that <em>cannot</em> be under-trained is <span class="red"><strong>5.6× worse</strong></span> than a fixed plan. 125–168 switches/episode × 3 s amber. <strong>The whole peak training budget was spent where nothing can win.</strong></p>
 </div>
 <div>
-<p><strong><code>min_green</code> was the binding constraint — not the algorithm.</strong></p>
-<p>At the <strong>10 s floor this project ran on</strong>, a controller that <em>cannot</em> be under-trained is <span class="red"><strong>5.6× worse</strong></span> than a fixed plan and strands a quarter of the traffic. 125–168 switches/episode × 3 s amber.</p>
-<p><strong>The whole peak training budget was spent where nothing can win.</strong></p>
+<p><img src="../results/headroom_peak.png" alt="" style="width:520px;" /></p>
 </div>
 </div>
 <p><strong>Read the 60 s row honestly:</strong> −9.3 s is <strong>inside the noise</strong> (paired sd 23.9 s). The mean is not the finding — <span class="green">consistency</span> is:</p>
@@ -467,7 +466,7 @@ section.lead h1 { font-size: 46px; }
 </tbody>
 </table>
 <p>Static's bad draw is seed 43 (126.3 s, 3834 trips); actuated takes that seed at 83.1 s, 4146 trips. <strong>The adaptive gain is not a lower mean — it's not having a bad seed.</strong></p>
-<p><span class="small">So: neither &quot;we failed&quot; nor &quot;nothing exists&quot;. At <code>min_green</code> = 10 there was nothing to find; at 60 there is, but it's a ~10% variance reduction a <em>non-learning</em> controller already collects. <strong>The bar RL must clear is the actuated controller (82.5 ± 10.1 s), not the static plan.</strong> Reproduce: <code>analysis/actuated.py</code>, <code>analysis/headroom.py</code>; rows in <code>analysis/actuated_sweep.csv</code>.</span></p>
+<p><span class="small">So: neither &quot;we failed&quot; nor &quot;nothing exists&quot;. At <code>min_green</code> = 10 there was nothing to find; at 60 there is, but it's a ~10% variance reduction a <em>non-learning</em> controller already collects. <strong>The bar RL must clear is the actuated controller (82.5 ± 10.1 s), not the static plan.</strong> Reproduce: <code>analysis/actuated.py</code>, <code>analysis/headroom.py</code>; rows in <code>analysis/actuated_sweep.csv</code>; figure <code>analysis/plot_headroom.py</code>.</span></p>
 </section>
 </foreignObject></svg><svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="10" data-paginate="true" data-header="RL Traffic Signal Control — Group 7" data-theme="default" data-style="section { font-size: 24px; }
 h1 { color: #1a3a5c; }
