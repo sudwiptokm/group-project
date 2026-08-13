@@ -8,6 +8,11 @@
 > static plan. Measurements: `docs/FINDINGS_2026-08-12.md`.
 >
 > **The off-peak notes are unaffected and stand as originally written.**
+>
+> **Do not take `presentation/QA_PREP.pdf` (7 Aug) into a viva** — its Part D.5
+> and Part E run on the withdrawn numbers, and it still calls an actuated
+> baseline "not implemented here". Use [`QA_PREP.md`](QA_PREP.md), which
+> supersedes it and is the source of record.
 
 
 **RL Traffic Signal Control · SUMO + Stable-Baselines3**
