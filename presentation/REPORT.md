@@ -179,6 +179,39 @@ The agent decides every 5 s with a 10 s minimum green, so it operates precisely 
 
 A competing explanation was tested and rejected: that teleports corrupt the reward by erasing a jammed vehicle's accumulated waiting time. Reward on teleport steps is mostly *more* negative (−19.1, −18.5, −13.3), because teleports occur when the jam is already severe.
 
+#### 4.1.4 Was there adaptive headroom to find?
+
+§4.1.3 claims the limitation is structural. That claim is testable without training anything, and leaving it untested would be the same error the rest of §4.1 documents — asserting a conclusion the measurement does not yet support.
+
+A static plan outperforming every learned policy admits two readings: the project's reinforcement learning failed to find an adaptive policy that exists, or no such policy exists at this junction. Further training cannot separate them, because a second null result is consistent with both. A non-learning demand-responsive controller can, since it requires no reward specification, no credit assignment and no sample budget; if it cannot beat the best static plan, the headroom is absent rather than merely unfound.
+
+`analysis/actuated.py` implements the classic queue-actuated policy: at each decision step it serves whichever green phase has the largest PCU-weighted queue on the lanes it discharges, subject to the environment's `min_green`. It is deliberately not max-pressure control, which requires downstream occupancy and would measure a different thing on approaches this short. The minimum green is swept because §4.1.3's amber arithmetic identifies it as the parameter that should matter.
+
+Peak 1.5×, seeds 42–46, 3600 s episodes, `--time-to-teleport 300`, paired against the static 60 s plan on the same demand seeds (`analysis/headroom.py`; per-run rows in `analysis/actuated_sweep.csv`):
+
+| `min_green` (s) | Delay per completed trip (s) | Trips completed | vs static 60 s, paired | Seeds beaten |
+|---|---:|---:|---:|---:|
+| **10** | 517.5 ± 208.4 | 2925 | +425.7 ± 217.5 | 0/5 |
+| 20 | 337.0 ± 220.5 | 3455 | +245.3 ± 228.9 | 1/5 |
+| 30 | 186.1 ± 108.0 | 3876 | +94.3 ± 115.3 | 1/5 |
+| 45 | 161.9 ± 64.2 | 4022 | +70.2 ± 66.3 | 1/5 |
+| **60** | **82.5 ± 10.1** | **4156** | **−9.3 ± 23.9** | **3/5** |
+| 75 | 92.2 ± 0.9 | 4119 | +0.4 ± 20.8 | 1/5 |
+| 90 | 118.7 ± 23.7 | 4038 | +26.9 ± 24.5 | 0/5 |
+
+**The minimum green is the binding constraint, not the choice of algorithm.** At the 10 s floor this project trained and evaluated on, a controller with perfect queue information and nothing to learn performs 5.6 times worse than a fixed plan, and leaves a quarter of the demand unserved — 2925 completed trips against the static plan's 4076, and 2008 on the worst seed. It issues 125–168 phase switches per episode against 38–60 at a 75–90 s floor, each costing three seconds of clearance. The sweep is U-shaped and has turned by 90 s, so 60 s is an interior optimum rather than a monotone preference for longer greens.
+
+**The 60 s row requires the same discipline as §4.1.2.** A −9.3 s advantage over the static plan sits inside the noise: the paired difference has a standard deviation of 23.9 s across five seeds. The mean is not the result. What is resolvable is consistency:
+
+| Controller | Delay sd | Trips completed |
+|---|--:|--:|
+| Static 60 s plan | 19.9 s | 3834–4162 (spread 328) |
+| Actuated, `min_green` = 60 | 10.1 s | 4142–4177 (spread **35**) |
+
+The static plan's weak draw is seed 43 (126.3 s, 3834 trips); the actuated controller takes that seed at 83.1 s and 4146 trips. The adaptive advantage is not a lower average — it is the absence of a bad seed.
+
+Neither reading is therefore correct on its own. At `min_green` = 10 there was nothing for a learned controller to find, and that is precisely where the entire training budget was spent, which makes the peak null over-determined rather than informative about reinforcement learning. At `min_green` = 60 there is something to find, but it amounts to roughly a ten per cent variance reduction that a controller requiring no training already collects. **The appropriate reference for future work is consequently the actuated controller at a matched minimum green (82.5 ± 10.1 s), not the static plan**, and a learned policy must beat it by a margin large enough to clear a 24 s paired standard deviation.
+
 ### 4.2 Off-Peak Demand (Light Traffic)
 
 | Algorithm | Mean waiting (s) | ± std | Mean speed (m/s) |
@@ -205,7 +238,7 @@ Off-peak demand is light, and here the fixed-time controller is already near-opt
 
 **The ceiling is the finding, and it is the same ceiling in both regimes.** Off-peak it is obvious: with almost no queuing to relieve, the 0.39 s baseline sits near the physical floor. At peak it is less obvious but better evidenced — the static sweep in §4.1.2 shows a well-chosen green already captures most of the achievable performance, while the amber-loss arithmetic in §4.1.3 shows that the action space on offer (two phases, 5 s decisions, 10 s minimum green) charges a controller up to 23% of capacity for the switching it is being asked to learn. A learned controller is competing for a margin the environment has largely spent in advance.
 
-**This makes the negative result informative rather than inconclusive.** It identifies a mechanism, predicts where RL *would* have room — longer minimum greens, a protected left-turn phase, or coordination across several junctions, none of which a single static plan can imitate — and it does so from measurements this project can reproduce.
+**This makes the negative result informative rather than inconclusive.** It identifies a mechanism, predicts where RL *would* have room, and — in §4.1.4 — tests that prediction instead of resting on it. The prediction held in its first and most important part: raising the minimum green from 10 s to 60 s is worth a factor of six to a controller that learns nothing at all, which locates the limitation in the action space rather than in the learning. It also failed in a second, more instructive part: even with the floor corrected, the adaptive margin over a good static plan is roughly ten per cent and lies inside the seed noise on the mean. **The honest summary is that this project's peak training budget was spent in a region of the action space where no controller can win, and that correcting it would still leave a small prize.** That is why the remaining structural extensions — a protected left-turn phase, or coordination across several junctions, neither of which a single static plan can imitate — matter more than any further work on this junction.
 
 **Disclosed A2C off-peak asymmetry.** For the single off-peak A2C cell, the hyperparameter-selection *objective* was cumulative waiting time (minimise) rather than the shaped reward used to select DQN, PPO, and QR-DQN. The reason is structural and worth stating precisely. At light off-peak demand throughput is essentially flat, so the `−λ · safety` term dominates the shaped reward. Under that reward the *reward-optimal* policy is "never switch phase" — which yields the best safety score and zero throughput, i.e. gridlock. Tuning A2C on the shaped reward selected exactly that collapse. Retuning A2C on waiting time makes gridlock the worst possible score and rejects it. Crucially, this changes only the **HP-selection criterion for one cell** — the training reward, environment, action/observation space, seeds, and evaluation protocol all remain identical across every algorithm and scenario, so the comparison is still apples-to-apples on what the agents optimise and how they are scored at evaluation.
 
@@ -236,6 +269,7 @@ The following extensions are planned, with tentative effort estimates.
 
 | Improvement | Rationale | Tentative effort |
 |---|---|---|
+| **Raise `min_green` to 60 s, then retrain** | Measured, not guessed: §4.1.4 shows the 10 s floor costs even a perfect-information controller a factor of 5.6, so every peak training run to date was conducted where nothing can win. Judge the result against the actuated controller (82.5 ± 10.1 s), not the static plan | ~0.5 day + retrain |
 | **Full-budget re-run** (100k steps, 3600 s episodes, 5/5 seeds) on a server | Tighten the numbers to publication strength | ~1–2 days compute (server) |
 | **Complete the λ safety-tradeoff curve** (λ = 0.0 / 0.5 / 1.0 for the RL agents, not just fixed-time) | Quantify what safety costs in efficiency | ~1 day |
 | **Remove the A2C tuning asymmetry** — re-tune all four off-peak on the same waiting-time objective | A fully symmetric comparison | ~0.5 day |
@@ -264,4 +298,6 @@ This project set out to establish which of four RL algorithms best beats a fixed
 
 Getting there required withdrawing the earlier peak headline and rebuilding the measurement stack around it: completed-trip delay instead of an in-network average that a stranded queue inflates, a swept static plan instead of a 10 s cycler mislabelled as fixed-time, and baselines paired to the agents' own demand seeds. Three of the six defects concern how `sumo-rl` is commonly used rather than anything specific to this codebase, which makes them worth reporting in their own right.
 
-The finding also points at where an adaptive controller *would* have room, and the next step follows directly from it: coordination across junctions is the one thing a static plan cannot imitate. Scaling to a **multi-intersection arterial corridor with coordinated MARL** — for which an environment prototype has already been built — is therefore not merely the next increment but the first setting in which the question this project asked can be answered in RL's favour.
+The finding also points at where an adaptive controller *would* have room, and §4.1.4 tests that pointer rather than asserting it. A non-learning queue-actuated controller — no reward, no training, perfect queue information — is 5.6 times worse than the fixed plan at the 10 s minimum green this project ran on, and matches it at 60 s. The action space, not the algorithm, was the binding constraint, and the entire peak training budget was spent inside it. Correcting the floor is therefore the first thing any continuation should do, and the reference to beat afterwards is that actuated controller rather than the static plan.
+
+Even corrected, the margin at this junction is about ten per cent and sits inside the seed noise, which is the clearest possible argument for changing the problem rather than the optimiser. Coordination across junctions is the one thing a static plan cannot imitate. Scaling to a **multi-intersection arterial corridor with coordinated MARL** — for which an environment prototype has already been built — is therefore not merely the next increment but the first setting in which the question this project asked can be answered in RL's favour.

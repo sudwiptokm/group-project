@@ -50,11 +50,17 @@ def _rows(logs_dir: str, pattern: re.Pattern, key: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def main(reference_green: int = 60) -> None:
+def main(reference_green: int = 60, table: str = "") -> None:
     static = _rows(STATIC, STATIC_RUN, "green")
     act = _rows(ACTUATED, ACT_RUN, "min_green")
     if static.empty or act.empty:
         raise SystemExit("need both sweeps: analysis/static_timing.py and analysis/actuated.py")
+
+    if table:
+        # Per-run rows, like analysis/static_sweep.csv: the actuated_logs/ dir is
+        # gitignored (~1 MB of tripinfo per run), so this aggregate is what the
+        # write-ups cite and what survives in the repo.
+        act.sort_values(["min_green", "seed"]).to_csv(table, index=False)
 
     ref = static[static.green == reference_green].set_index("seed")
     print(f"reference: static {reference_green} s plan — "
@@ -71,15 +77,30 @@ def main(reference_green: int = 60) -> None:
             "delay": g.delay.mean(),
             "delay_sd": g.delay.std(),
             "completed": g.completed.mean(),
+            # spread, not just the mean: the mean difference against the static
+            # plan sits inside the seed noise, so consistency across demand
+            # draws is the part of this comparison that is actually resolvable.
+            "trips_min": g.completed.min(),
+            "trips_max": g.completed.max(),
             f"vs_static{reference_green}": diff.mean(),
+            "diff_sd": diff.std(),
             "seeds_beating_static": int((diff < 0).sum()),
         })
     print(pd.DataFrame(out).round(1).to_string(index=False))
+
+    print(f"\nstatic {reference_green} s, per seed (the row above is measured "
+          f"against this):")
+    print(ref[["delay", "completed"]].round(1).to_string())
+    print(f"delay sd {ref.delay.std():.1f}, trips {ref.completed.min():.0f}"
+          f"-{ref.completed.max():.0f} "
+          f"(spread {ref.completed.max() - ref.completed.min():.0f})")
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--reference-green", type=int, default=60,
                    help="static plan the adaptive controller is measured against")
+    p.add_argument("--table", default="analysis/actuated_sweep.csv",
+                   help="where to write the per-run actuated sweep table")
     a = p.parse_args()
-    main(a.reference_green)
+    main(a.reference_green, a.table)
