@@ -29,7 +29,7 @@ import sys
 from stable_baselines3.common.monitor import Monitor
 
 from algos import ALGOS, build
-from env_common import (DEFAULT_MIN_GREEN, eval_csv_stem, make_env,
+from env_common import (DEFAULT_MIN_GREEN, eval_csv_stem, make_env, model_path,
                         resolve_min_green)
 
 PARAMS_DIR = "params"
@@ -80,8 +80,9 @@ def train(algo: str, steps: int, seed: int, use_defaults: bool,
     os.makedirs("logs", exist_ok=True)
 
     tag = _tag(scenario, lam)
+    min_green = resolve_min_green(min_green)
     env = make_env(seed=seed, scenario=scenario, lam=lam, gui=False,
-                   out_csv=f"logs/{algo}_{tag}_seed{seed}",
+                   out_csv=f"logs/{algo}_{tag}_seed{seed}_mg{min_green}",
                    min_green=min_green)
     env = Monitor(env)
 
@@ -89,13 +90,13 @@ def train(algo: str, steps: int, seed: int, use_defaults: bool,
     model = build(algo, env, params, seed=seed, tb_log="logs/tb")
     model.learn(total_timesteps=steps, progress_bar=True)
 
-    path = f"models/{algo}_{tag}_seed{seed}.zip"
+    path = model_path(algo, tag, seed, min_green)
     model.save(path)
     env.close()
     print(f"saved {path}")
 
 
-def evaluate(algo: str, model_path: str, seed: int, gui: bool,
+def evaluate(algo: str, model_file: str, seed: int, gui: bool,
              scenario: str = "base", lam: float = 0.0, train_seed: int = None,
              min_green: int = None):
     tag = _tag(scenario, lam)
@@ -110,7 +111,7 @@ def evaluate(algo: str, model_path: str, seed: int, gui: bool,
     # is needed, and it is a single episode so nothing overwrites it
     env = make_env(seed=seed, scenario=scenario, lam=lam, gui=gui, out_csv=stem,
                    tripinfo=True, min_green=min_green)
-    model = ALGOS[algo]["cls"].load(model_path)
+    model = ALGOS[algo]["cls"].load(model_file)
     obs, _ = env.reset()
     done = False
     total_r = 0.0
