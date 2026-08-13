@@ -16,7 +16,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from env_common import eval_csv_stem, resolve_min_green  # noqa: E402
+from env_common import eval_csv_stem, model_path, resolve_min_green  # noqa: E402
 
 
 class TestResolveMinGreen:
@@ -110,6 +110,27 @@ class TestEvalCsvStem:
         hits = glob.glob(str(tmp_path / "eval_dqn_peak_lam05_seed*.csv"))
 
         assert hits == [str(run)]
+
+
+class TestModelPath:
+    """A checkpoint is a policy FOR an action space. Two floors trained on the
+    same algo/scenario/lam/seed used to resolve to one filename, so the second
+    run silently overwrote the first -- and the surviving file gave no clue
+    which floor it was trained against."""
+
+    def test_carries_the_min_green(self):
+        assert model_path("dqn", "peak_lam05", seed=0, min_green=60) == \
+            "models/dqn_peak_lam05_seed0_mg60.zip"
+
+    def test_omits_the_tag_when_unspecified(self):
+        # the off-peak checkpoints on disk predate this and must stay loadable
+        assert model_path("dqn", "offpeak_lam05", seed=0) == \
+            "models/dqn_offpeak_lam05_seed0.zip"
+
+    def test_two_floors_do_not_collide(self):
+        a = model_path("dqn", "peak_lam05", seed=0, min_green=10)
+        b = model_path("dqn", "peak_lam05", seed=0, min_green=60)
+        assert a != b
 
 
 class TestCompareWarnsOnMixedMinGreens:
