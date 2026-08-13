@@ -56,6 +56,16 @@ TUNE_EVAL_SEEDS="${TUNE_EVAL_SEEDS:-42 43}"
 EPISODE_SECONDS="${EPISODE_SECONDS:-$_EPISODE}"  # sim-seconds per episode
 export EPISODE_SECONDS                 # consumed by env_common.make_env
 
+# Action-space floor for every tuning/training/eval run in this grid. Set once
+# here so tuning and training cannot disagree -- params selected against one
+# floor are not the right params for another. The default lives in
+# env_common.DEFAULT_MIN_GREEN (60 s) and is measured, not chosen: at a 10 s
+# floor even a non-learning queue-actuated controller is 5.6x worse than a
+# fixed plan (analysis/actuated.py, docs/FINDINGS_2026-08-12.md). Every peak
+# result before 2026-08-13 was produced at 10 s.
+MIN_GREEN="${MIN_GREEN:-60}"
+export MIN_GREEN                       # consumed by env_common.make_env
+
 SKIP_TUNE=0
 SKIP_TRAIN=0
 SKIP_EVAL=0

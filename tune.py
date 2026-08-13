@@ -35,7 +35,7 @@ import optuna
 EVAL_WALL_CAP = float(os.environ.get("EVAL_WALL_CAP", "120"))
 
 from algos import ALGOS, build
-from env_common import make_env
+from env_common import DEFAULT_MIN_GREEN, make_env
 
 PARAMS_DIR = "params"
 
@@ -49,7 +49,8 @@ def _serialisable(params: dict) -> dict:
     return out
 
 
-def _eval_waiting(model, seed: int, scenario: str, lam: float) -> float:
+def _eval_waiting(model, seed: int, scenario: str, lam: float,
+                  min_green: int = None) -> float:
     """Cumulative system waiting time over one eval episode (lower = better).
 
     We tune on the *reported* metric (waiting time), NOT the shaped reward.
@@ -65,7 +66,8 @@ def _eval_waiting(model, seed: int, scenario: str, lam: float) -> float:
     Wall-clock guarded: a gridlocked policy makes SUMO crawl, so we cap the
     episode and raise TimeoutError (caught upstream -> prune) if it overruns.
     """
-    env = make_env(seed=seed, scenario=scenario, lam=lam, gui=False, out_csv=None)
+    env = make_env(seed=seed, scenario=scenario, lam=lam, gui=False, out_csv=None,
+                   min_green=min_green)
     try:
         obs, _ = env.reset()
         done = False
@@ -85,10 +87,15 @@ def _eval_waiting(model, seed: int, scenario: str, lam: float) -> float:
         env.close()
 
 
-def make_objective(algo: str, steps: int, train_seed: int, eval_seeds, scenario: str, lam: float):
+def make_objective(algo: str, steps: int, train_seed: int, eval_seeds, scenario: str,
+                   lam: float, min_green: int = None):
     def objective(trial: optuna.Trial) -> float:
         params = ALGOS[algo]["sample"](trial)
-        env = make_env(seed=train_seed, scenario=scenario, lam=lam, gui=False, out_csv=None)
+        # Hyperparameters are selected FOR an action space: a policy tuned
+        # against a 10 s floor is not the right policy for a 60 s one, so the
+        # floor has to be identical here and in training.
+        env = make_env(seed=train_seed, scenario=scenario, lam=lam, gui=False,
+                       out_csv=None, min_green=min_green)
         try:
             model = build(algo, env, params, seed=train_seed, tb_log=None)
             model.learn(total_timesteps=steps, progress_bar=False)
@@ -103,7 +110,8 @@ def make_objective(algo: str, steps: int, train_seed: int, eval_seeds, scenario:
         # so return the negative. A TimeoutError from a gridlocked/crawling eval
         # prunes the trial instead of letting it run for hours.
         try:
-            waits = [_eval_waiting(model, s, scenario=scenario, lam=lam) for s in eval_seeds]
+            waits = [_eval_waiting(model, s, scenario=scenario, lam=lam,
+                                   min_green=min_green) for s in eval_seeds]
         except TimeoutError as e:
             print(f"trial {trial.number} pruned: {e}")
             raise optuna.TrialPruned()
@@ -126,6 +134,11 @@ def main():
     p.add_argument("--eval-seeds", type=int, nargs="+", default=[42, 43])
     p.add_argument("--scenario", default="peak", choices=["base", "peak", "offpeak"])
     p.add_argument("--lam", type=float, default=0.5, help="safety-reward weight for tuning")
+    p.add_argument("--min-green", type=int, default=None,
+                   help=f"action-space floor to tune against, in seconds "
+                        f"(default {DEFAULT_MIN_GREEN}, or $MIN_GREEN). Must match "
+                        "the floor training will use — params selected at one "
+                        "floor do not transfer to another")
     args = p.parse_args()
 
     os.makedirs(PARAMS_DIR, exist_ok=True)
@@ -135,7 +148,8 @@ def main():
         study_name=f"{args.algo}_tuning",
         sampler=optuna.samplers.TPESampler(seed=args.train_seed),
     )
-    objective = make_objective(args.algo, args.steps, args.train_seed, args.eval_seeds, args.scenario, args.lam)
+    objective = make_objective(args.algo, args.steps, args.train_seed, args.eval_seeds,
+                               args.scenario, args.lam, min_green=args.min_green)
     study.optimize(objective, n_trials=args.trials, show_progress_bar=True)
 
     best = ALGOS[args.algo]["sample"](

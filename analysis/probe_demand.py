@@ -39,7 +39,10 @@ def probe(factor: float, seed: int, teleport: int = -1) -> dict:
     env_common.SCENARIO_ROUTES["probe"] = scaled_route(factor)
     csv = os.path.join(OUT, f"f{factor:.2f}_tt{teleport}_seed{seed}")
     env = make_env(seed=seed, scenario="probe", lam=0.0, gui=False, out_csv=csv,
-                   teleport=teleport)
+                   # This probe never requests a switch, so the floor is inert
+                   # here -- pinned anyway to record what the published demand
+                   # sweep ran with rather than inherit a default that moved.
+                   teleport=teleport, min_green=10)
 
     obs, _ = env.reset()
     action, done = 0, False
