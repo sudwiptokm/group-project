@@ -301,6 +301,17 @@ def eval_csv_stem(algo: str, tag: str, seed: int, train_seed: int = None,
     return stem
 
 
+def remaining_steps(target: int, done: int) -> int:
+    """Steps still owed on a `target`-step budget with `done` already trained.
+
+    The budget is counted in TOTAL steps across resumes, not per invocation:
+    an arm resumed three times must still train `target`, or it is being
+    compared against arms that got a smaller budget. Clamped at zero because
+    SB3 rounds up to a whole rollout, so `num_timesteps` can overshoot.
+    """
+    return max(0, target - done)
+
+
 def model_path(algo: str, tag: str, seed: int, min_green: int = None) -> str:
     """Where a trained checkpoint lives.
 

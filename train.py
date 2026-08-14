@@ -26,11 +26,12 @@ import json
 import os
 import sys
 
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
 
 from algos import ALGOS, build
 from env_common import (DEFAULT_MIN_GREEN, eval_csv_stem, make_env, model_path,
-                        resolve_min_green)
+                        remaining_steps, resolve_min_green)
 
 PARAMS_DIR = "params"
 
@@ -74,26 +75,65 @@ def _materialise(saved: dict) -> dict:
 
 
 # ----------------------------------------------------------------------------
+class _PeriodicCheckpoint(BaseCallback):
+    """Write the checkpoint mid-run so a kill costs minutes, not the whole run.
+
+    SB3 only persists when learn() returns. Long runs on this machine are
+    terminated at ~53 minutes, and a 30k-step PPO run needs ~68, so without
+    this a run can never finish and leaves nothing behind when it dies -- one
+    kill discarded 34 of 42 completed episodes.
+    """
+
+    def __init__(self, path: str, every: int):
+        super().__init__()
+        self.path, self.every = path, every
+        self._last = 0
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps - self._last >= self.every:
+            self._last = self.num_timesteps
+            self.model.save(self.path)
+        return True
+
+
 def train(algo: str, steps: int, seed: int, use_defaults: bool,
-          scenario: str = "base", lam: float = 0.0, min_green: int = None):
+          scenario: str = "base", lam: float = 0.0, min_green: int = None,
+          resume: bool = False, checkpoint_every: int = 2000):
     os.makedirs("models", exist_ok=True)
     os.makedirs("logs", exist_ok=True)
 
     tag = _tag(scenario, lam)
     min_green = resolve_min_green(min_green)
+    path = model_path(algo, tag, seed, min_green)
+
     env = make_env(seed=seed, scenario=scenario, lam=lam, gui=False,
                    out_csv=f"logs/{algo}_{tag}_seed{seed}_mg{min_green}",
                    min_green=min_green)
     env = Monitor(env)
 
-    params = load_params(algo, use_defaults, scenario=scenario)
-    model = build(algo, env, params, seed=seed, tb_log="logs/tb")
-    model.learn(total_timesteps=steps, progress_bar=True)
+    if resume and os.path.exists(path):
+        model = ALGOS[algo]["cls"].load(path, env=env)
+        todo = remaining_steps(steps, model.num_timesteps)
+        if not todo:
+            env.close()
+            print(f"{path} already has {model.num_timesteps}/{steps} steps — done")
+            return
+        print(f"resuming {path} at {model.num_timesteps}/{steps} steps")
+    else:
+        params = load_params(algo, use_defaults, scenario=scenario)
+        model = build(algo, env, params, seed=seed, tb_log="logs/tb")
+        todo = steps
 
-    path = model_path(algo, tag, seed, min_green)
+    # reset_num_timesteps=False so the budget is counted across resumes: three
+    # resumed chunks of a 30k run must train 30k, not 90k, or this arm is
+    # compared against arms that got less.
+    model.learn(total_timesteps=todo, progress_bar=True,
+                reset_num_timesteps=not resume,
+                callback=_PeriodicCheckpoint(path, checkpoint_every))
+
     model.save(path)
     env.close()
-    print(f"saved {path}")
+    print(f"saved {path} at {model.num_timesteps} steps")
 
 
 def evaluate(algo: str, model_file: str, seed: int, gui: bool,
@@ -152,6 +192,13 @@ if __name__ == "__main__":
                         "the action space, not a tuning detail: at 10 s even a "
                         "non-learning controller is 5.6x worse than a fixed plan "
                         "— see docs/FINDINGS_2026-08-12.md")
+    p.add_argument("--resume", action="store_true",
+                   help="continue from the checkpoint on disk if there is one, "
+                        "counting --steps as the TOTAL budget across resumes. "
+                        "Exits immediately if it is already complete")
+    p.add_argument("--checkpoint-every", type=int, default=2000,
+                   help="save mid-run every N steps (default 2000), so a killed "
+                        "run leaves progress behind rather than nothing")
     args = p.parse_args()
 
     if args.eval:
@@ -160,4 +207,5 @@ if __name__ == "__main__":
                  min_green=args.min_green)
     else:
         train(args.algo, steps=args.steps, seed=args.seed, use_defaults=args.defaults,
-              scenario=args.scenario, lam=args.lam, min_green=args.min_green)
+              scenario=args.scenario, lam=args.lam, min_green=args.min_green,
+              resume=args.resume, checkpoint_every=args.checkpoint_every)
