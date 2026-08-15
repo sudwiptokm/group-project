@@ -4,7 +4,7 @@ import argparse
 import os
 
 import corridor_control as cc
-from env_common import make_corridor_env
+from env_common import DEFAULT_MIN_GREEN, make_corridor_env, resolve_min_green
 
 CONTROLLERS = ("green_wave", "max_pressure")
 
@@ -50,13 +50,31 @@ def _max_pressure_actions(env):
     return actions
 
 
-def run(scenario: str, controller: str, seed: int) -> str:
+def run(scenario: str, controller: str, seed: int, min_green: int = None,
+        tripinfo: bool = True) -> str:
     """Run one controller over one corridor scenario for a full episode and write
     the eval CSV. Returns the CSV path
-    (logs/eval_<controller>_<scenario>_seed<seed>_conn<label>_ep<episode>.csv)."""
+    (logs/eval_<controller>_<scenario>_seed<seed>_mg<min_green>_conn<label>_ep<episode>.csv).
+
+    `min_green` is not a detail here -- it defines both baselines:
+
+      * green_wave requests a phase change on EVERY decision step, so the only
+        thing setting its green duration is the floor. A "green wave" run at
+        min_green=10 is a 10 s-green plan, which is the regime the single
+        intersection measured a perfect-information controller to be 5.6x worse
+        than a fixed plan in. The floor is this baseline's design parameter and
+        has to be swept before the baseline means anything.
+      * max_pressure is reactive, so the floor is a genuine constraint on it --
+        the same knob analysis/actuated.py swept at the single junction.
+
+    Neither had ever been calibrated; that is Phase 1. The floor is recorded in
+    the CSV name so two floors cannot be averaged into one row.
+    """
     os.makedirs("logs", exist_ok=True)
-    csv = f"logs/eval_{controller}_{scenario}_seed{seed}"
-    env = make_corridor_env(seed=seed, scenario=scenario, lam=0.0, out_csv=csv)
+    min_green = resolve_min_green(min_green)
+    csv = f"logs/eval_{controller}_{scenario}_seed{seed}_mg{min_green}"
+    env = make_corridor_env(seed=seed, scenario=scenario, lam=0.0, out_csv=csv,
+                            min_green=min_green, tripinfo=tripinfo)
     env.reset()
     offsets = cc.green_wave_offsets(SIGNAL_POSITIONS, free_flow_speed=FREE_FLOW_SPEED)
     step = 0
@@ -83,7 +101,7 @@ def run(scenario: str, controller: str, seed: int) -> str:
     env.save_csv(env.out_csv_name, env.episode)
     env.close()
     out = (
-        f"logs/eval_{controller}_{scenario}_seed{seed}"
+        f"logs/eval_{controller}_{scenario}_seed{seed}_mg{min_green}"
         f"_conn{env.label}_ep{env.episode}.csv"
     )
     print(f"corridor baseline written: {out}")
@@ -101,5 +119,12 @@ if __name__ == "__main__":
     )
     p.add_argument("--controller", default="green_wave", choices=CONTROLLERS)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--min-green", type=int, default=None,
+                   help=f"action-space floor in seconds (default "
+                        f"{DEFAULT_MIN_GREEN}, or $MIN_GREEN). For green_wave "
+                        "this IS the green duration -- see run()")
+    p.add_argument("--no-tripinfo", action="store_true",
+                   help="skip per-trip output (the ranking metric comes from it)")
     args = p.parse_args()
-    run(args.scenario, args.controller, args.seed)
+    run(args.scenario, args.controller, args.seed, min_green=args.min_green,
+        tripinfo=not args.no_tripinfo)

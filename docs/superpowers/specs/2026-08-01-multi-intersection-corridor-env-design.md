@@ -189,5 +189,14 @@ without reading its internals.
 - MARL framework (RLlib / EPyMARL / custom CTDE) — **SP2/SP3**.
 - Exact CTDE algorithm(s) (MAPPO, QMIX, …) — **SP3**.
 - Whether the single-agent 4-algo set is re-run as independent baselines or only
-  the winner (DQN) is carried forward — **SP2**.
+  one algorithm is carried forward — **SP2**. **Note (2026-08-13): this decision
+  can no longer be resolved by "carry the winner (DQN) forward".** That ranking
+  came from the withdrawn peak comparison; see `docs/FINDINGS_2026-08-12.md`.
+  There is currently no valid single-intersection RL result to inherit, so SP2
+  must either re-run the baselines itself or pick an algorithm on grounds other
+  than this project's ranking. Two constraints from the same findings carry over:
+  set `min_green` to 60 s rather than 10 s (the 10 s floor is 5.6x worse than a
+  fixed plan even for a non-learning controller), and score against a
+  queue-actuated baseline (`analysis/actuated.py`) rather than a static plan
+  alone.
 - Corridor → grid extension — optional stretch after SP5.
