@@ -70,6 +70,20 @@ def storage_url(study_name: str) -> str:
     return f"sqlite:///{os.path.join(PARAMS_DIR, study_name + '.db')}"
 
 
+def make_storage(url: str):
+    """Storage with a heartbeat, so a killed worker doesn't strand its trial.
+
+    Runs here are killed mid-trial routinely. Without a heartbeat the trial it
+    was running stays RUNNING in the database forever: it never completes, never
+    counts towards the target, and the sampler keeps treating it as in flight.
+    With one, a worker that stops writing for `grace_period` is declared FAILED
+    and its slot is reusable.
+    """
+    return optuna.storages.RDBStorage(
+        url=url, heartbeat_interval=60, grace_period=180,
+    )
+
+
 def _completed(study) -> int:
     return sum(1 for t in study.trials
                if t.state == optuna.trial.TrialState.COMPLETE)
@@ -216,7 +230,7 @@ def main():
     min_green = resolve_min_green(args.min_green)
 
     study_name = study_id(args.algo, args.scenario, min_green)
-    storage = args.storage or storage_url(study_name)
+    storage = make_storage(args.storage or storage_url(study_name))
 
     study = optuna.create_study(
         direction="maximize",
@@ -227,7 +241,7 @@ def main():
             seed=args.train_seed if args.sampler_seed is None else args.sampler_seed),
     )
     if args.init_only:
-        print(f"study {study_name} ready at {storage}")
+        print(f"study {study_name} ready at {storage.url}")
         return
 
     done = _completed(study)
