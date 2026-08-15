@@ -204,7 +204,22 @@ algorithms:
   env var (default 3600 = 1-hour episode). The `overnight` run mode sets it to 1200
   to shrink episodes; see section 5.
 - `delta_time=5` — seconds between agent decisions
-- `yellow_time=3`, `min_green=10`, `max_green=60`
+- `yellow_time=3`, `max_green=60` (inert — sumo-rl stores `max_green` and never
+  reads it, `traffic_signal.py:77`)
+- `min_green` — the action-space floor: the shortest a green may run before a
+  switch request is honoured. Defaults to **60** (`DEFAULT_MIN_GREEN`, or the
+  `MIN_GREEN` env var, which `run_experiment.sh` sets for a whole grid). This is
+  not a tuning detail and the default is measured, not chosen: a non-learning
+  queue-actuated controller is **5.6× worse than a fixed plan at a 10 s floor**
+  and matches it at 60 s (`analysis/actuated.py`,
+  `docs/FINDINGS_2026-08-12.md`). It was hard-wired to 10 with no override until
+  2026-08-13, so every peak result before then was produced in a region where no
+  controller can win.
+  **Callers that set their own green must pass it explicitly** — `baseline.py`
+  and `analysis/static_timing.py` pin 10, because a 60 s floor would clamp every
+  sweep point below 60 into an identical plan and erase the low end of the
+  curve. Evaluation records the floor in the CSV name (`..._mg<n>_conn<N>...`)
+  so `compare.py` can refuse to average two action spaces into one row.
 - `reward_fn=make_safety_reward_fn(lam)` — **the same reward for all agents** at
   a given λ; λ = 0 reduces to pure `diff-waiting-time`
 - `single_agent=True` — one traffic light → Stable-Baselines3 single-agent API
@@ -433,7 +448,7 @@ python make_scenarios.py                 # once: build peak/off-peak route files
 
 # Stage 1 — pick best algorithm (overnight budget, the default)
 caffeinate -i ./run_experiment.sh
-python compare.py                        # winner = lowest system_mean_waiting_time
+python compare.py                        # winner = lowest trip_time_loss_mean (delay per completed trip)
 
 # Stage 2 — safety λ-sweep on the winner only
 caffeinate -i env ALGOS="<winner>" LAMBDAS="0.0 0.5 1.0" ./run_experiment.sh --skip-tune

@@ -188,7 +188,7 @@ then ranks them (plus the fixed-time baseline) by mean waiting time:
 ```bash
 # overnight (default) — run this first
 caffeinate -i ./run_experiment.sh
-python compare.py          # winner = lowest system_mean_waiting_time
+python compare.py          # winner = lowest trip_time_loss_mean (delay per completed trip)
 
 # later, for full-budget numbers (long — prefer a server):
 caffeinate -i env MODE=full ./run_experiment.sh
