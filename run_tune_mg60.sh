@@ -72,17 +72,18 @@ mkdir -p logs params
 worker() {
   local algo="$1" idx="$2"
   local log="logs/tune_${algo}_${SCENARIO}_mg${MIN_GREEN}_w${idx}.log"
-  local attempt=1
+  local attempt=1 rc=0
   while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
     echo "TUNE start $algo w$idx (attempt $attempt)"
-    if python tune.py --algo "$algo" --scenario "$SCENARIO" --lam "$LAM" \
+    rc=0
+    python tune.py --algo "$algo" --scenario "$SCENARIO" --lam "$LAM" \
           --trials "$TRIALS" --steps "$STEPS" --min-green "$MIN_GREEN" \
           --eval-seeds $TUNE_EVAL_SEEDS --sampler-seed "$idx" \
-          >> "$log" 2>&1
-    then echo "TUNE done  $algo w$idx"; return 0; fi
+          >> "$log" 2>&1 || rc=$?
+    if [ "$rc" -eq 0 ]; then echo "TUNE done  $algo w$idx"; return 0; fi
     # Non-zero means killed mid-trial (or a genuine error). Completed trials are
     # already in the study db, so restarting resumes rather than repeats.
-    echo "TUNE retry $algo w$idx (exit $?, see $log)"
+    echo "TUNE retry $algo w$idx (exit $rc, see $log)"
     attempt=$((attempt + 1))
     sleep 5
   done
@@ -90,9 +91,18 @@ worker() {
   return 1
 }
 
+# Create each study BEFORE forking its workers. Optuna builds the SQLite schema
+# on first connect, and workers starting together on a fresh file race that
+# creation ("UNIQUE constraint failed: alembic_version.version_num").
+for algo in $ALGOS; do
+  python tune.py --algo "$algo" --scenario "$SCENARIO" --min-green "$MIN_GREEN" \
+        --init-only || { echo "FATAL: could not create study for $algo"; exit 1; }
+done
+
 for algo in $ALGOS; do
   for i in $(seq 1 "$WORKERS_PER_ALGO"); do
     worker "$algo" "$i" &
+    sleep 2          # stagger: don't hand six SUMO launches the same instant
   done
 done
 wait
