@@ -78,9 +78,22 @@ def make_storage(url: str):
     counts towards the target, and the sampler keeps treating it as in flight.
     With one, a worker that stops writing for `grace_period` is declared FAILED
     and its slot is reusable.
+
+    The grace period is an hour, and that is not padding. At 60 s/180 s, six
+    contending workers on this machine were too starved to write a heartbeat
+    every three minutes, so LIVE workers were declared dead and every trial they
+    went on to finish was recorded FAIL: five hours of six-way work produced
+    zero completed trials. The check has to be slack enough that only a real
+    death trips it -- a trial is ~40 minutes, so an hour of total silence is
+    dead, and three minutes is merely busy.
+
+    Reaped trials are re-enqueued rather than discarded: the parameters a killed
+    trial was exploring are still worth a look, and re-running one costs the
+    same as sampling a fresh one.
     """
     return optuna.storages.RDBStorage(
-        url=url, heartbeat_interval=60, grace_period=180,
+        url=url, heartbeat_interval=300, grace_period=3600,
+        failed_trial_callback=optuna.storages.RetryFailedTrialCallback(max_retry=1),
     )
 
 

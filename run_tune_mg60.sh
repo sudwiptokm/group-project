@@ -53,6 +53,11 @@ SCENARIO="${SCENARIO:-peak}"
 LAM="${LAM:-0.5}"
 TUNE_EVAL_SEEDS="${TUNE_EVAL_SEEDS:-7 8}"
 WORKERS_PER_ALGO="${WORKERS_PER_ALGO:-3}"
+# Index of the first worker. Workers are numbered w$((OFFSET+1))..; the number
+# is both the log name and the TPE sampler seed, so adding capacity to a study
+# that is already running needs an offset or the new workers duplicate the
+# existing ones' logs and sampling.
+WORKER_OFFSET="${WORKER_OFFSET:-0}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-20}"
 
 export EPISODE_SECONDS="${EPISODE_SECONDS:-3600}"
@@ -106,7 +111,7 @@ for algo in $ALGOS; do
 done
 
 for algo in $ALGOS; do
-  for i in $(seq 1 "$WORKERS_PER_ALGO"); do
+  for i in $(seq $((WORKER_OFFSET + 1)) $((WORKER_OFFSET + WORKERS_PER_ALGO))); do
     worker "$algo" "$i" &
     sleep 2          # stagger: don't hand six SUMO launches the same instant
   done
