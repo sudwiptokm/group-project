@@ -165,7 +165,7 @@ Peak 1.5×, seeds 42–46, 3600 s episodes, `--time-to-teleport 300`
   agent decides every 5 s with `min_green` = 10 s — exactly where switching is
   cheap to try and ruinous to pay for — and `diff_waiting_time` only surfaces
   that cost several decisions later.
-- **No valid RL row exists at peak**, and we do not invent one: the checkpoints
+- **Stage 1 has no valid RL row at peak**, and we do not invent one: the checkpoints
   predate the safety fix and two 20k-step retraining attempts produced no
   learning. Stage-1 policies sat at 20–33 s where a 60 s static plan sits at
   11.5 s — same 1200 s episodes, same in-network metric, so those two are
@@ -223,6 +223,51 @@ against the actuated one, delay above and completion below.
 
 ---
 
+## Slide 7d — So we retrained at the corrected floor
+
+If `min_green` = 10 was the binding constraint, fixing it should move the
+agents. **It did — and not far enough.**
+
+| Controller | delay / completed trip | trips | vs static 60 s | vs **actuated 60 s** |
+|---|--:|--:|--:|--:|
+| **queue-actuated, mg 60** | **82.5 ± 10.1** | 4156 | −9.3, wins 3/5 | — |
+| **dqn, mg 60** | **88.3 ± 8.0** | 4102 | −3.5, wins 2/5 | **+5.8 ± 8.2, wins 1/5** |
+| static 60 s plan | 91.8 ± 19.9 | 4076 | — | +9.3 |
+| **ppo, mg 60** | 112.5 ± 17.9 | 4083 | +20.8, wins 1/5 | **+30.1 ± 10.3, wins 0/5** |
+
+DQN and PPO, `--defaults`, 30k steps, 3600 s episodes, `--time-to-teleport 300`,
+3 training seeds each, **every** checkpoint evaluated on all 5 demand seeds — 15
+runs per arm, not the one reference checkpoint that produced defect 4
+(`analysis/pilot.py`).
+
+- **The floor was worth a great deal.** Stage-1 policies were 2–3× worse than a
+  competent static plan. At the corrected floor DQN is **level** with it. That is
+  the largest single effect this project has measured on a learned controller,
+  and it came from **one environment parameter**, not from anything about
+  learning.
+- **Neither arm beats the controller that learns nothing.** DQN loses to the
+  queue-actuated reference on 4 of 5 seeds; PPO on 5 of 5, and PPO loses to the
+  plain static plan as well.
+- **The losses are better evidenced than the win.** Both actuated comparisons
+  have tighter spreads (8.2, 10.3) than the static ones (22.1).
+- **DQN's −3.5 s against static is not a win** — paired sd 22.1 s over five
+  seeds. Presenting it as one would repeat defect 2 on the slide that documents
+  defect 2.
+- **Per training seed:** dqn 87.7 / 87.4 / 89.8 — the three policies agree, so
+  this is not one draw. ppo 106.1 / 104.3 / 127.3 — seed 2 is an outlier, and
+  even excluding it PPO sits near 105 s and still loses to both references.
+- **Why two arms matter:** off-policy replay and on-policy rollouts are as far
+  apart as our arms get, and both land behind a policy with no reward and no
+  training. One algorithm failing is an anecdote; two is a property of the
+  junction.
+- **Budget caveat, and it cuts one way.** ~42 episodes is thin. A *null* would be
+  weak evidence; a *loss to a non-learning reference* is stronger, because
+  further training must overturn a deficit rather than merely find a signal.
+  **Untested:** a full budget with hyperparameters re-tuned at the new floor —
+  ours were selected at a 10 s floor and the pilot ran `--defaults`.
+
+---
+
 ## Slide 8 — Results: off-peak demand (light traffic)
 
 | Algorithm | Mean wait (s) | ± std | Speed (m/s) |
@@ -249,14 +294,19 @@ against the actuated one, delay above and completion below.
 
 ## Slide 9 — Reading the results honestly
 
-- **Peak:** no valid RL result. The standard to beat is **any static plan in the
-  45–90 s green band**, and the Stage-1 policies were **2–3× worse** than it. The cause is structural —
-  amber lost time at a 2-phase junction — not a training budget we can buy.
+- **Peak, Stage 1:** withdrawn in full. Corrected, those policies were **2–3×
+  worse** than a static plan that needed no tuning to find.
+- **Peak, retrained at the corrected floor:** DQN recovers to **level with the
+  static plan** (88.3 ± 8.0 vs 91.8 ± 19.9), but **neither DQN nor PPO beats the
+  controller that learns nothing** (+5.8 and +30.1 s, winning 1/5 and 0/5
+  seeds). Two opposite algorithm families, one verdict — a property of the
+  junction, not of an optimiser.
 - **`min_green` = 10 was the binding constraint, and we measured it.** A
   controller that learns nothing is 5.6× worse than the fixed plan at that floor
-  and matches it at 60 s, so the peak null is **over-determined**. Fix the floor
-  before retraining anything; afterwards the bar is the **actuated controller**
-  (82.5 ± 10.1 s), not the static plan — and even then the prize is ~10%.
+  and matches it at 60 s, so the Stage-1 null is **over-determined** — that
+  budget was spent where no controller can win.
+- **Not yet excluded:** a full budget with hyperparameters **re-tuned at the
+  corrected floor**. Ours were selected at 10 s; the pilot ran `--defaults`.
 - **Off-peak:** the baseline is near-optimal; RL *cannot* beat it — an honest
   **ceiling**, not a failure. All agents stay mobile.
 - **λ ablation:** never run. Only λ = 0.5 exists, so "safety-aware" is in the

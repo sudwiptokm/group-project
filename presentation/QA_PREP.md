@@ -16,12 +16,11 @@ questions with answers.
 > than deleted, because "what changed and why" is now the most likely question
 > in the room.
 
-**One dependency, stated honestly.** A pilot retrain at the corrected
-`min_green` (2 algos × 3 seeds × 30k steps, evaluated on seeds 42–46) was
-running when this was written. Until it lands there is **no valid RL row at
-peak** — say exactly that. Do not present the pilot's numbers before they exist,
-and when they do, remember that a null at 30k steps is weak evidence while a
-positive is strong (see D.5).
+**The pilot retrain has landed (2026-08-15).** DQN and PPO were retrained at the
+corrected `min_green` = 60, 3 training seeds each, every checkpoint evaluated on
+all 5 demand seeds. There are now **valid peak RL rows** where previously there
+were none: DQN recovers to level with the best static plan, and **neither arm
+beats the non-learning queue-actuated controller**. Full numbers in D.5.
 
 ## Contents
 
@@ -662,10 +661,11 @@ will not be an unequal-tuning artefact.
 
 **Q — What are your peak results?**
 
-**There is no valid RL result at peak, and we do not manufacture one.** Every
-peak checkpoint predates the safety fix and none was retrained; two 20k-step
-retraining attempts produced no learning. What we have instead is a
-well-measured statement about the problem:
+**Stage 1 produced no valid peak result, and we do not manufacture one** — those
+checkpoints predate the safety fix and two 20k-step retraining attempts at the
+old floor produced no learning. **The arms were retrained at the corrected
+floor, and those rows are valid** (see the next question). First, the
+well-measured statement about the problem itself:
 
 | Controller | delay per completed trip |
 |---|---|
@@ -691,10 +691,50 @@ requests 125–168 switches per episode at a 10 s floor, against 38–60 at 75�
 
 **Q — So fix the floor and RL wins?**
 
-Probably not, and we should not promise it. At a 60 s floor the actuated
-controller beats the best static plan by 9.3 s — but the paired difference has an
-sd of **23.9 s** across five seeds, so that is inside the noise. **The mean is
-not the result.** What is resolvable is consistency:
+**No — we tested it.** Retrained at `min_green` = 60, `--defaults`, 30k steps,
+3 training seeds each, every checkpoint on all 5 demand seeds
+(`analysis/pilot.py`):
+
+| Controller | delay / completed trip | trips | vs static 60 s | vs **actuated 60 s** |
+|---|---:|---:|---:|---:|
+| **queue-actuated, mg 60** | **82.5 ± 10.1** | 4156 | −9.3, wins 3/5 | — |
+| **dqn, mg 60** | **88.3 ± 8.0** | 4102 | −3.5, wins 2/5 | **+5.8 ± 8.2, wins 1/5** |
+| static 60 s plan | 91.8 ± 19.9 | 4076 | — | +9.3 |
+| **ppo, mg 60** | 112.5 ± 17.9 | 4083 | +20.8, wins 1/5 | **+30.1 ± 10.3, wins 0/5** |
+
+**The floor was worth a great deal** — Stage-1 policies were 2–3× behind a
+static plan; DQN is now level with it. That is the largest effect this project
+has measured on a learned controller, from one environment parameter.
+
+**But neither arm beats the controller that learns nothing**, and PPO does not
+beat the static plan either. Both actuated comparisons have *tighter* spreads
+(8.2, 10.3) than the static ones (22.1), so **the losses are better evidenced
+than DQN's apparent win**.
+
+*Say before you are asked:* DQN's −3.5 s against the static plan is **not** a
+win — paired sd 22.1 s. Claiming it would repeat defect 2.
+
+*Per training seed:* dqn 87.7 / 87.4 / 89.8 (agree, so not one draw);
+ppo 106.1 / 104.3 / 127.3 (seed 2 an outlier — volunteer it; even excluding it
+PPO is ~105 s and still loses to both references).
+
+*Why two arms matter:* off-policy replay and on-policy rollouts are as far apart
+as our arms get, and both land behind a policy with no reward and no training.
+One algorithm failing is an anecdote; two is a property of the junction.
+
+*The one thing not excluded, offer it unprompted:* a full budget with
+hyperparameters **re-tuned at the corrected floor**. Ours were selected at 10 s
+and the pilot ran `--defaults` at 30k steps (~42 episodes). A *null* at that
+budget would be weak evidence; a *loss to a non-learning reference* is stronger,
+because further training must overturn a deficit rather than merely find a
+signal.
+
+**Q — Is the remaining headroom worth anything at all?**
+
+At a 60 s floor the actuated controller beats the best static plan by 9.3 s —
+but the paired difference has an sd of **23.9 s** across five seeds, so that is
+inside the noise. **The mean is not the result.** What is resolvable is
+consistency:
 
 | | delay sd | trips completed |
 |---|---:|---:|
@@ -709,8 +749,8 @@ not a lower mean — it is not having a bad seed.**
 
 The **actuated controller at a matched floor** — 82.5 ± 10.1 s — not the static
 plan. Matching the static plan proves nothing, because a policy that needs no
-training already does that. And it has to beat it by enough to clear a 24 s
-paired sd.
+training already does that. Neither retrained arm clears that bar: DQN wins 1
+demand seed of 5, PPO none.
 
 **Q — Did you run a significance test?**
 
@@ -736,10 +776,12 @@ only widen the gap in fixed-time's favour.
 
 **Q — Which algorithm is the winner?**
 
-**None, and the question is premature.** Ranking four algorithms only means
-something once one of them beats a competent static plan, and none does.
+**None, and the question is premature.** Ranking algorithms only means something
+once one of them beats a controller that needs no training, and neither does.
 Off-peak, DQN is closest to the baseline (0.48 s vs 0.39 s) but does not beat it.
-At peak there is no valid row at all.
+At peak, retrained at the corrected floor, DQN is level with the static plan and
+PPO is behind it, and both lose to the queue-actuated reference. DQN is the
+better of the two arms — but "better loser" is not a winner.
 
 ### D.6 The safety-sampling defect and the fix
 
@@ -885,16 +927,23 @@ is the better outcome.
 | Safety terms, peak seed 0 | brake 0.206 → **5.07** · exposure 0.0 → **11.57** · mean\|eff\| **8.44 both sides** |
 | `SAFETY_SCALE` | 0.024 → **2.1298** (= 17.97 / 8.44) |
 | Timing | decision 5 s · amber 3 s · **min green 60 s (was 10)** · max green 60 s **but inert** · episode 3600 s · teleport **300 s** |
-| Tests | **53 green** |
+| **Peak, retrained at mg 60** | dqn **88.3 ± 8.0** (4102 trips) · ppo **112.5 ± 17.9** (4083) |
+| **Retrained vs actuated (the bar)** | dqn **+5.8 ± 8.2, wins 1/5** · ppo **+30.1 ± 10.3, wins 0/5** |
+| Retrained vs static 60 s | dqn −3.5 ± 22.1 (wins 2/5, NOT a win) · ppo +20.8 (wins 1/5) |
+| Per training seed | dqn 87.7 / 87.4 / 89.8 · ppo 106.1 / 104.3 / 127.3 |
+| Tests | **62 green** |
 | **Withdrawn** | ~~peak DQN/A2C −24 % (1319.2 → 1002.8 / 1003.3 s)~~ · paired: +56.9 / +67.6 / +118 / +123 % |
 
 ### E.2 The traps
 
 Each is a place where the obvious phrasing is wrong.
 
-- **Do not name an algorithm winner.** There is no valid peak ranking. Off-peak
-  DQN is closest but does not beat the baseline. The old "DQN best mean, A2C best
-  reliability" line came from the withdrawn table.
+- **Do not name an algorithm winner.** Off-peak DQN is closest but does not beat
+  the baseline; at peak DQN beats PPO but both lose to a controller that learns
+  nothing. The old "DQN best mean, A2C best reliability" line came from the
+  withdrawn table.
+- **Do not present DQN's −3.5 s against the static plan as a win.** Paired sd
+  22.1 s. This is the single most likely place to repeat defect 2.
 - **Do not say the −9.3 s actuated gain is an improvement.** It is inside the
   noise (paired sd 23.9 s). The defensible claim is *consistency*: 35 trips of
   spread against 328.
@@ -908,9 +957,10 @@ Each is a place where the obvious phrasing is wrong.
 - **Do not say "our RL failed".** Say the training budget was spent at a floor
   where no controller can win, so the null is over-determined. The distinction is
   the whole contribution.
-- **Do not treat a null from the pilot retrain as evidence of no headroom.** At
-  ~42 episodes a positive result is informative and a null is weak — it cannot
-  separate "no signal" from "too few episodes".
+- **Do not overclaim the retrain either.** It is a *loss to a non-learning
+  reference* at ~42 episodes, which is stronger than a null but is not proof
+  that no budget could win. The untested case is a full budget with
+  hyperparameters re-tuned at the corrected floor — volunteer that.
 
 ### E.3 Questions to put to your supervisor
 

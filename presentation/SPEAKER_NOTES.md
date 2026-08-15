@@ -77,7 +77,7 @@ Target: **~10–12 min** talk. Time budgets below sum to ~11 min. Leave slack fo
 - Have the paired numbers ready: per seed, DQN −23.9% becomes **+56.9%**, A2C **+67.6%**, PPO **+118%**, QR-DQN **+123%**.
 - Say plainly that the "fixed-time" baseline was a 10 s-green cycler — that sets up slide 7b, where 10 s is the *worst* plan in the sweep.
 - **Do not show** `bars_peak_lam05.png` / `improvement_peak_lam05.png` — they plot the withdrawn numbers.
-- If asked "so is any of this real?" → "Off-peak is unaffected and I'll show why in two slides. At peak the honest answer is that we have no valid RL measurement, and I'd rather say that than defend a number I've disproved."
+- If asked "so is any of this real?" → "Off-peak is unaffected and I'll show why in two slides. At peak the Stage-1 measurement is void and I'd rather say that than defend a number I've disproved — but we retrained at the corrected floor and I have valid rows for you."
 
 ## Slide 7b — Peak: what actually controls performance *(~2 min · Sudwipto)*
 - This is the slide the project is now built on. Deliver it as a finding, not as damage control.
@@ -86,7 +86,7 @@ Target: **~10–12 min** talk. Time budgets below sum to ~11 min. Leave slack fo
 - **Say "plateau", never "optimum".** Paired on the same seeds those greens differ by ±13 s against a ~30 s seed spread. This is the pre-emptive answer to "you hand-tuned the baseline": the plan that beats our agents took no tuning skill to find. If you quote the sample minimum (75 s) as *the* best, you have made defect 2 again in front of the panel — it loses to 60 s on four of five seeds.
 - **Mechanism in one breath:** 3 s of amber per switch — 23% of the cycle at a 10 s green, 4.8% at 60 s. The agent decides every 5 s with a 10 s minimum green, so it lives exactly where switching is cheap to try and ruinous to pay for, and `diff_waiting_time` bills it several decisions too late for credit assignment.
 - The payoff line: **one mechanism explains Stage 1, the pilot, and the 20k-step null together.** That is why we call it structural rather than a training-budget problem.
-- Say there is **no valid RL row** and we are not inventing one — the checkpoints predate the safety fix and two retraining attempts produced no learning. Stage-1 policies sat at 20–33 s where a 60 s static plan sits at 11.5 s.
+- Say **Stage 1** has no valid RL row and we are not inventing one — those checkpoints predate the safety fix and two retraining attempts produced no learning. Stage-1 policies sat at 20–33 s where a 60 s static plan sits at 11.5 s. **Retrained rows come two slides later**, so promise them here rather than letting the panel think there are none at all.
 - Worth a sentence if you have time: `sumo-rl` stores `max_green` and never reads it, so our `max_green = 60` constrained nothing — which is why the sweep runs past 60 s instead of stopping there.
 
 ## Slide 7c — Did our RL fail, or was there nothing to find? *(~2 min · Sudwipto)*
@@ -101,6 +101,18 @@ Target: **~10–12 min** talk. Time budgets below sum to ~11 min. Leave slack fo
 - If asked "doesn't this kill the project?" → it does the opposite: it converts our main recommendation from a guess into a measurement. We were choosing between three fixes; now we know which one and by how much.
 - **Reading the plot** (`results/headroom_peak.png`): both controllers on one x axis — for the static plan it is the green it holds, for the actuated one its `min_green` floor. Same y, delay per completed trip, same seeds. Point at the **left-hand end, not the crossover**: that is where the argument is. The lower panel is completion, and it shows both controllers stranding traffic below ~45 s.
 
+## Slide 7d — So we retrained at the corrected floor *(~2 min · Sudwipto)*
+- **This is the slide that closes the argument.** Open with the logic: "If the floor was the constraint, fixing it should move the agents. It did — and not far enough."
+- **Give the good news first and mean it.** Stage-1 policies were 2–3× behind a static plan; at the corrected floor DQN is **level** with it (88.3 vs 91.8). That is the biggest effect we have measured on a learned controller, and it came from **one environment parameter**. Say that plainly — it is the vindication of the whole audit.
+- **Then the verdict:** neither arm beats the controller that learns nothing. DQN loses on 4 of 5 seeds (+5.8 ± 8.2), PPO on 5 of 5 (+30.1 ± 10.3), and PPO loses to the plain static plan as well.
+- **Do to your own good number what you did to Stage 1's.** DQN's −3.5 s against the static plan *looks* like a win. The paired sd is 22.1 s. Say it is not a win before anyone asks — on the slide sequence that documents defect 2, claiming it would be defect 2 again.
+- **The sharpest methodological point:** both actuated comparisons have *tighter* spreads (8.2, 10.3) than the static ones (22.1). **The losses are better evidenced than the win.** If you land one statistical remark on this slide, land that one.
+- **Why two arms:** off-policy replay and on-policy rollouts are as far apart as our arms get, and both finish behind a policy with no reward and no training. "One algorithm failing is an anecdote; two is a property of the junction."
+- Have the per-seed numbers ready: dqn 87.7/87.4/89.8 — they agree, so it is not one draw. ppo 106.1/104.3/127.3 — seed 2 is an outlier, and **volunteer that**; even dropping it PPO is ~105 and still loses.
+- **The budget caveat, and say which way it cuts:** ~42 episodes is thin, so a *null* would be weak. What we have is a *loss to a non-learning reference*, which is stronger — more training has to overturn a deficit, not merely find a signal.
+- **The one thing we have not excluded**, and offer it before it is extracted from you: a full budget with hyperparameters **re-tuned at the new floor**. Ours were picked at 10 s and the pilot ran library defaults. That is the honest remaining uncertainty and the first thing a continuation should do.
+- If asked "so is RL useless here?" → "At this junction, once the action space is sensible, there is very little left to win — about ten per cent, inside the seed noise, and a controller that learns nothing already collects it. That is an argument for changing the problem, not the optimiser."
+
 ## Slide 8 — Results: off-peak demand *(~1.5 min · Aleana)*
 - Flip the story: off-peak is light, fixed-time is **already near-optimal at 0.39 s** — no RL agent beats it.
 - The real result: **all four stay mobile — no gridlock.** DQN is within a hair (0.48 s).
@@ -109,7 +121,7 @@ Target: **~10–12 min** talk. Time budgets below sum to ~11 min. Leave slack fo
 - Plot: `results/bars_offpeak_lam05.png`.
 
 ## Slide 9 — Reading the results honestly *(~1.5 min · Aleana)*
-- Peak: **no valid RL result**, and the standard to beat is any static plan in the 45–90 s band. Do not soften this into "mixed results".
+- Peak: the **Stage-1** result is void; the retrained rows are valid, and the standard to beat is the actuated controller. Do not soften either into "mixed results".
 - Add the headroom finding in one sentence: **`min_green` = 10 was the binding constraint, not the algorithm** — a controller that learns nothing is 5.6× worse than the fixed plan at that floor and matches it at 60 s. That makes the peak null over-determined and tells us exactly what to fix first.
 - Off-peak: an honest **ceiling, not a failure** — a good fixed plan is genuinely hard to beat in light traffic. All agents stay mobile.
 - Say the two together: **the ceiling is the same ceiling in both regimes**, and at peak we can now name the mechanism behind it.
@@ -215,7 +227,8 @@ Scope — we deliberately bounded the project to one junction to run a rigorous,
 ---
 
 ## Fast-reference numbers (memorise)
-- **Peak, current:** static plan at 60 s (mid-plateau) = **91.8 ± 19.9 s delay per completed trip**, 4076 trips, **94.3%** of demand completed, 14.97 s in-network wait. No valid RL row. Plateau = **45–90 s**; paired differences ±13 s against a ~30 s seed spread.
+- **Peak, current:** static plan at 60 s (mid-plateau) = **91.8 ± 19.9 s delay per completed trip**, 4076 trips, **94.3%** completed, 14.97 s in-network. Plateau = **45–90 s**; paired differences ±13 s against a ~30 s seed spread.
+- **Peak, retrained at mg 60:** dqn **88.3 ± 8.0** (4102 trips) · ppo **112.5 ± 17.9** (4083). vs static: dqn −3.5 ± 22.1 (wins 2/5, NOT a win), ppo +20.8 (1/5). vs **actuated 82.5**: dqn **+5.8 ± 8.2 (wins 1/5)**, ppo **+30.1 ± 10.3 (wins 0/5)**. Per training seed dqn 87.7/87.4/89.8, ppo 106.1/104.3/127.3.
 - **Peak, withdrawn:** fixed-time 1319 s, DQN/A2C 1003 s (−24%), PPO +2.8%, QR-DQN +6.2%. Quote these **only** as the numbers being withdrawn. Paired per seed they become +56.9 / +67.6 / +118 / +123%.
 - **Actuated headroom probe:** queue-actuated, non-learning. `min_green` 10 = **517.5 ± 208.4 s**, 2925 trips (**5.6×** the static plan, +426 paired, wins 0/5); `min_green` **60 = 82.5 ± 10.1 s**, 4156 trips, −9.3 paired, wins 3/5; 75 = 92.2, 90 = 118.7 (curve turns). Robustness is the real gain: trips **4142–4177 (spread 35)** vs static **3834–4162 (spread 328)**; delay sd 10.1 vs 19.9. Seed 43: static 126.3 s / 3834 trips, actuated 83.1 s / 4146 trips. **−9.3 s is inside the noise — paired sd 23.9 s.**
 - **Amber arithmetic:** 3 s yellow → 23% of the cycle lost at a 10 s green, 4.8% at 60 s. Decisions every 5 s, `min_green` 10 s. Switch requests: 125–168/episode at a 10 s floor vs 38–60 at 75–90 s.
@@ -223,4 +236,4 @@ Scope — we deliberately bounded the project to one junction to run a rigorous,
 - Off-peak fixed-time: **0.39 s**. DQN **0.48 s**, PPO 1.76 s, QR-DQN 1.99 s, A2C 36 s (mobile, 4.75 m/s). Unaffected by the audit.
 - PCU weights: moto **0.3** / auto **0.5** / car **1.0**. Safety weights: moto **1.0** / auto **0.6** / car **0.3**.
 - Vehicle mix: 60/25/15% moto/auto/car. Reference **λ = 0.5**. Reward = `Δwaiting − λ·(safety/SCALE)`.
-- **No winner is claimed.** The old "winner: DQN, best mean + biggest relief" line came from the withdrawn peak table — do not use it. Off-peak DQN is closest to the baseline (0.48 s vs 0.39 s) but does not beat it, and at peak there is no valid RL row at all. Ranking four algorithms only means something once one of them beats a competent static plan, and none does.
+- **No winner is claimed.** The old "winner: DQN, best mean + biggest relief" line came from the withdrawn peak table — do not use it. Off-peak DQN is closest to the baseline (0.48 s vs 0.39 s) but does not beat it. At peak, retrained, DQN is level with the static plan and PPO is behind it, and **neither beats the controller that learns nothing**. Ranking algorithms only means something once one of them beats a policy that needs no training, and neither does.
