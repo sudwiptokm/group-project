@@ -57,6 +57,19 @@ def _serialisable(params: dict) -> dict:
     return out
 
 
+def study_id(algo: str, scenario: str, min_green: int) -> str:
+    """Name of the study for this search.
+
+    Floor and scenario are part of a study's identity: two floors are two
+    different search problems and must never share a trial history.
+    """
+    return f"{algo}_{scenario}_mg{min_green}"
+
+
+def storage_url(study_name: str) -> str:
+    return f"sqlite:///{os.path.join(PARAMS_DIR, study_name + '.db')}"
+
+
 def _completed(study) -> int:
     return sum(1 for t in study.trials
                if t.state == optuna.trial.TrialState.COMPLETE)
@@ -192,16 +205,18 @@ def main():
                    help="TPE sampler seed (default: --train-seed). Give parallel "
                         "workers on one storage different values, or their "
                         "startup trials are identical and the search wastes them")
+    p.add_argument("--init-only", action="store_true",
+                   help="create the study and exit, running no trials. Workers "
+                        "starting together on a fresh SQLite file race each "
+                        "other's schema creation, so a launcher calls this once "
+                        "before forking them")
     args = p.parse_args()
 
     os.makedirs(PARAMS_DIR, exist_ok=True)
     min_green = resolve_min_green(args.min_green)
 
-    # Floor and scenario are part of the study's identity: two floors are two
-    # different search problems and must not share a trial history.
-    study_name = f"{args.algo}_{args.scenario}_mg{min_green}"
-    storage = args.storage or \
-        f"sqlite:///{os.path.join(PARAMS_DIR, study_name + '.db')}"
+    study_name = study_id(args.algo, args.scenario, min_green)
+    storage = args.storage or storage_url(study_name)
 
     study = optuna.create_study(
         direction="maximize",
@@ -211,6 +226,10 @@ def main():
         sampler=optuna.samplers.TPESampler(
             seed=args.train_seed if args.sampler_seed is None else args.sampler_seed),
     )
+    if args.init_only:
+        print(f"study {study_name} ready at {storage}")
+        return
+
     done = _completed(study)
     if done:
         print(f"resuming study {study_name}: {done}/{args.trials} trials complete")
