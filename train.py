@@ -41,12 +41,18 @@ def _tag(scenario: str, lam: float) -> str:
     return f"{scenario}_lam{str(lam).replace('.', '')}"
 
 
-def load_params(algo: str, use_defaults: bool, scenario: str = None) -> dict:
+def load_params(algo: str, use_defaults: bool, scenario: str = None,
+                min_green: int = None) -> dict:
     """Tuned params if present (and not overridden), else defaults.
 
     Prefers the scenario-specific file params/<algo>_<scenario>.json (HPs tuned on
     one demand regime don't transfer — see tune.py), falling back to the legacy
     scenario-agnostic params/<algo>.json for backward compatibility.
+
+    `min_green` is only used to check the params against the floor they were
+    selected at: a params file carries no visible mark of its action space, so
+    training a 60 s floor on 10 s-tuned params looks exactly like training on
+    the right ones. That confound is what the peak retrain exists to remove.
     """
     if not use_defaults:
         candidates = []
@@ -59,15 +65,38 @@ def load_params(algo: str, use_defaults: bool, scenario: str = None) -> dict:
                 with open(path) as f:
                     saved = json.load(f)
                 print(f"[{algo}] using tuned hyperparameters from {path}")
+                _warn_floor_mismatch(algo, path, saved, min_green)
                 # net_arch is stored as a name key by tune.py -> rebuild policy_kwargs
                 return _materialise(saved)
     print(f"[{algo}] using default hyperparameters")
     return ALGOS[algo]["defaults"]()
 
 
+def _warn_floor_mismatch(algo: str, path: str, saved: dict, min_green: int) -> None:
+    """Shout when the params were tuned against a different action space.
+
+    Untagged files predate the provenance keys and were all tuned at the 10 s
+    floor the actuated probe showed is unwinnable, so they warn too.
+    """
+    if min_green is None:
+        return
+    tuned_at = saved.get("_min_green")
+    if tuned_at == min_green:
+        return
+    at = "an unrecorded floor (pre-provenance file — assume 10)" \
+        if tuned_at is None else f"min_green={tuned_at}"
+    print(f"[{algo}] WARNING: {path} was tuned at {at} but this run uses "
+          f"min_green={min_green}. Hyperparameters are selected for an action "
+          f"space; re-run tune.py --min-green {min_green} or pass --defaults.")
+
+
 def _materialise(saved: dict) -> dict:
-    """Convert a saved param dict (net_arch as list) back into cls kwargs."""
-    params = dict(saved)
+    """Convert a saved param dict (net_arch as list) back into cls kwargs.
+
+    Underscore-prefixed keys are tune.py provenance (_min_green, _tune_steps,
+    ...), not constructor arguments — drop them or the algorithm rejects them.
+    """
+    params = {k: v for k, v in saved.items() if not k.startswith("_")}
     net_arch = params.pop("net_arch", None)
     if net_arch is not None:
         params["policy_kwargs"] = dict(net_arch=net_arch)
@@ -120,7 +149,8 @@ def train(algo: str, steps: int, seed: int, use_defaults: bool,
             return
         print(f"resuming {path} at {model.num_timesteps}/{steps} steps")
     else:
-        params = load_params(algo, use_defaults, scenario=scenario)
+        params = load_params(algo, use_defaults, scenario=scenario,
+                             min_green=min_green)
         model = build(algo, env, params, seed=seed, tb_log="logs/tb")
         todo = steps
 

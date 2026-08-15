@@ -16,6 +16,14 @@ Keep the search cheap enough to run per algorithm:
 
 Then train with the tuned params (picked up automatically):
     python train.py --algo dqn --steps 100000 --seed 0
+
+The study is kept in a SQLite file (--storage, one per algo/scenario/floor), so
+a search is RESUMABLE and PARALLEL: --trials is a target for the study as a
+whole, not a per-process count. A killed run tops the study back up to the
+target instead of starting from zero, and several workers can share one study
+by pointing at the same storage with different --sampler-seed values. At peak,
+one trial is ~30 minutes of wall clock, so a 30-trial search is a multi-hour
+job that will be interrupted at least once -- see run_tune_mg60.sh.
 """
 
 import argparse
@@ -35,7 +43,7 @@ import optuna
 EVAL_WALL_CAP = float(os.environ.get("EVAL_WALL_CAP", "120"))
 
 from algos import ALGOS, build
-from env_common import DEFAULT_MIN_GREEN, make_env
+from env_common import DEFAULT_MIN_GREEN, make_env, resolve_min_green
 
 PARAMS_DIR = "params"
 
@@ -47,6 +55,42 @@ def _serialisable(params: dict) -> dict:
     if pk and "net_arch" in pk:
         out["net_arch"] = pk["net_arch"]
     return out
+
+
+def _completed(study) -> int:
+    return sum(1 for t in study.trials
+               if t.state == optuna.trial.TrialState.COMPLETE)
+
+
+def _stop_at_target(target: int):
+    """Stop this worker once the STUDY (not this process) has `target` trials.
+
+    With several workers on one storage, each would otherwise run `target`
+    trials of its own. It also makes a resumed search top up to the target
+    rather than repeat it.
+    """
+    def callback(study, trial):
+        if _completed(study) >= target:
+            study.stop()
+    return callback
+
+
+def _write_params(path: str, params: dict, provenance: dict) -> None:
+    """Write the tuned params plus the settings they were selected under.
+
+    The provenance keys are underscore-prefixed and stripped by train.py before
+    the dict reaches the algorithm constructor. They exist because
+    hyperparameters are selected FOR an action space and a training budget:
+    params tuned at a 10 s floor are not the right params for a 60 s one, and
+    the file used to record neither -- so a floor could silently change under a
+    params file that looked unchanged.
+    """
+    payload = dict(provenance)
+    payload.update(params)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(payload, f, indent=2)
+    os.replace(tmp, path)          # atomic: parallel workers can't tear the file
 
 
 def _eval_waiting(model, seed: int, scenario: str, lam: float,
@@ -139,18 +183,51 @@ def main():
                         f"(default {DEFAULT_MIN_GREEN}, or $MIN_GREEN). Must match "
                         "the floor training will use — params selected at one "
                         "floor do not transfer to another")
+    p.add_argument("--storage", default=None,
+                   help="Optuna storage URL for the study (default: a SQLite "
+                        "file under params/, one per algo/scenario/floor). The "
+                        "study resumes from it, so --trials is a target for the "
+                        "study rather than a count for this process")
+    p.add_argument("--sampler-seed", type=int, default=None,
+                   help="TPE sampler seed (default: --train-seed). Give parallel "
+                        "workers on one storage different values, or their "
+                        "startup trials are identical and the search wastes them")
     args = p.parse_args()
 
     os.makedirs(PARAMS_DIR, exist_ok=True)
+    min_green = resolve_min_green(args.min_green)
+
+    # Floor and scenario are part of the study's identity: two floors are two
+    # different search problems and must not share a trial history.
+    study_name = f"{args.algo}_{args.scenario}_mg{min_green}"
+    storage = args.storage or \
+        f"sqlite:///{os.path.join(PARAMS_DIR, study_name + '.db')}"
 
     study = optuna.create_study(
         direction="maximize",
-        study_name=f"{args.algo}_tuning",
-        sampler=optuna.samplers.TPESampler(seed=args.train_seed),
+        study_name=study_name,
+        storage=storage,
+        load_if_exists=True,
+        sampler=optuna.samplers.TPESampler(
+            seed=args.train_seed if args.sampler_seed is None else args.sampler_seed),
     )
-    objective = make_objective(args.algo, args.steps, args.train_seed, args.eval_seeds,
-                               args.scenario, args.lam, min_green=args.min_green)
-    study.optimize(objective, n_trials=args.trials, show_progress_bar=True)
+    done = _completed(study)
+    if done:
+        print(f"resuming study {study_name}: {done}/{args.trials} trials complete")
+    if done >= args.trials:
+        print("target already met — nothing to run")
+    else:
+        objective = make_objective(args.algo, args.steps, args.train_seed, args.eval_seeds,
+                                   args.scenario, args.lam, min_green=min_green)
+        # n_trials bounds this worker; the callback stops it as soon as the
+        # SHARED study reaches the target, so N workers still run ~N trials
+        # total rather than N x target.
+        study.optimize(objective, n_trials=args.trials - done,
+                       callbacks=[_stop_at_target(args.trials)],
+                       show_progress_bar=False)
+
+    if not _completed(study):
+        sys.exit("no trial completed — nothing to write (check the log for prunes)")
 
     best = ALGOS[args.algo]["sample"](
         optuna.trial.FixedTrial(study.best_params)
@@ -159,12 +236,18 @@ def main():
     # reused on another (offpeak's near-zero reward starves a peak-tuned tiny lr →
     # constant-action gridlock). train.py loads params/<algo>_<scenario>.json.
     out_path = os.path.join(PARAMS_DIR, f"{args.algo}_{args.scenario}.json")
-    with open(out_path, "w") as f:
-        json.dump(_serialisable(best), f, indent=2)
+    _write_params(out_path, _serialisable(best), {
+        "_min_green": min_green,
+        "_scenario": args.scenario,
+        "_lam": args.lam,
+        "_tune_steps": args.steps,
+        "_trials": _completed(study),
+    })
 
     # best_value is -mean_waiting (we maximise the negative); report as waiting
     print(f"\nbest mean eval waiting time: {-study.best_value:.1f}")
-    print(f"best params written to {out_path}")
+    print(f"best params written to {out_path} (min_green={min_green}, "
+          f"{_completed(study)} trials)")
 
 
 if __name__ == "__main__":
