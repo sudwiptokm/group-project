@@ -35,6 +35,12 @@
 # of starting over. Each worker is wrapped in a retry loop; re-running this
 # script after a kill is always safe and never repeats completed trials.
 set -uo pipefail
+# Ignore SIGINT/SIGHUP, and let the workers inherit that. The first attempt at
+# this run died five minutes in with the whole process group -- driver, workers
+# and SUMO -- so the in-script retry loop went with it and nothing restarted.
+# Children inherit an ignored disposition, so this covers python and SUMO too.
+# Stop the run with: pkill -f run_tune_mg60.sh ; pkill -f 'tune.py --algo'
+trap '' INT HUP
 cd "$(dirname "$0")"
 [ -d venv ] && source venv/bin/activate
 export SUMO_HOME="${SUMO_HOME:-$(python -c 'import sumo; print(sumo.SUMO_HOME)')}"
