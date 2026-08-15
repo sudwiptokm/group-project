@@ -70,13 +70,53 @@ as an improvement in the mean. What is resolvable is consistency: it completes
 4142-4177 trips across seeds where the static plan spans 3834-4162. The adaptive
 gain is not a lower average, it is the absence of a bad seed.
 
-So the practical recommendation changes from a guess to a measurement: raise the
+So the practical recommendation changed from a guess to a measurement: raise the
 minimum green to 60 s before retraining anything, and score whatever comes out
 against the actuated controller rather than the static plan, since matching a
-policy that needs no training would prove nothing. It also sets expectations
-honestly - even with the floor corrected the available margin here is around ten
-per cent, which is the strongest argument I have for moving to the corridor
-setting rather than continuing to optimise this junction.
+policy that needs no training would prove nothing.
+
+I have since done that retrain, and it is the last thing in this email. DQN and
+PPO, at the corrected floor, three training seeds each, every checkpoint
+evaluated on all five demand seeds:
+
+  queue-actuated, mg 60    82.5 +/- 10.1 s   4156 trips
+  dqn, mg 60               88.3 +/-  8.0 s   4102 trips
+  static 60 s plan         91.8 +/- 19.9 s   4076 trips
+  ppo, mg 60              112.5 +/- 17.9 s   4083 trips
+
+Two things follow, and they pull in opposite directions.
+
+The floor was worth a great deal. Stage-1 policies were two to three times
+behind a competent static plan; DQN is now level with it. That is the largest
+effect I have measured on a learned controller in this project, and it came from
+one environment parameter rather than from anything about learning. It is the
+vindication of the audit.
+
+But neither arm beats the controller that learns nothing. DQN loses to it on
+four of five demand seeds, PPO on all five, and PPO does not beat the plain
+static plan either. I want to be explicit that DQN's 3.5 s advantage over the
+static plan is NOT a win - the paired standard deviation is 22.1 s, so it is
+inside the noise, and calling it an improvement would repeat the exact error
+this email exists to correct. Both comparisons against the actuated controller
+have tighter spreads than the ones against the static plan, so the losses are
+the better-evidenced numbers in that table.
+
+Two algorithms from opposite families reaching the same verdict is what makes me
+read this as a property of the junction rather than a failure of one optimiser.
+At a two-phase isolated junction, once the action space is set sensibly, there
+is very little left for a learned controller to win - about ten per cent, inside
+the seed noise, and a non-learning controller already collects it.
+
+The honest remaining uncertainty: the pilot ran on library defaults at 30k steps
+(~42 episodes), with hyperparameters that were selected against the old 10 s
+floor. A full budget with parameters re-tuned at the corrected floor has not
+been tried, and that is the first thing I would do before anyone concludes
+something stronger from this. What it would have to overturn is a deficit rather
+than a null, which is the more demanding of the two.
+
+All of which is the strongest argument I have for moving to the corridor
+setting, where coordination between junctions is something no static plan can
+imitate, rather than continuing to optimise this one.
 
 Off-peak, unchanged:
   fixed-time 0.39   (baseline, already near-optimal)

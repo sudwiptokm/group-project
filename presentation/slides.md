@@ -139,7 +139,7 @@ $$ \text{reward} = \Delta\,\text{waiting\_time} \; - \; \lambda \cdot \frac{\tex
 
 **Mechanism — lost time to amber.** `yellow_time` = 3 s, so every switch spends 3 s serving nobody: **23%** of the cycle at a 10 s green, **4.8%** at 60 s. The agent decides every 5 s with `min_green` = 10 s — exactly where switching is cheap to attempt and ruinous to pay for — and `diff_waiting_time` only surfaces that cost several decisions later.
 
-**There is no valid RL row at peak.** The models predate the safety fix, and two 20k-step retraining attempts produced no learning. Stage-1 policies sat at 20–33 s where a static 60 s plan sits at 11.5 s — a factor of 2–3 the wrong way (same 1200 s episodes and in-network metric; not comparable to the 3600 s figures).
+**Stage 1 has no valid RL row at peak.** Those models predate the safety fix, and two 20k-step retraining attempts produced no learning. Stage-1 policies sat at 20–33 s where a static 60 s plan sits at 11.5 s — a factor of 2–3 the wrong way (same 1200 s episodes and in-network metric; not comparable to the 3600 s figures). **Retrained rows at the corrected floor are two slides on.**
 
 ---
 
@@ -183,6 +183,29 @@ Static's bad draw is seed 43 (126.3 s, 3834 trips); actuated takes that seed at 
 
 ---
 
+## Peak — so we retrained at the corrected floor
+
+If `min_green` = 10 was the constraint, fixing it should move the agents. **It did — and not far enough.**
+
+| Controller | delay / trip | trips | vs static | vs **actuated** |
+|---|--:|--:|--:|--:|
+| <span class="green">**queue-actuated, mg 60**</span> | **82.5 ± 10.1** | 4156 | −9.3, 3/5 | — |
+| **dqn, mg 60** | **88.3 ± 8.0** | 4102 | −3.5, 2/5 | <span class="red">**+5.8 ± 8.2, wins 1/5**</span> |
+| static 60 s | 91.8 ± 19.9 | 4076 | — | +9.3 |
+| **ppo, mg 60** | 112.5 ± 17.9 | 4083 | +20.8, 1/5 | <span class="red">**+30.1 ± 10.3, wins 0/5**</span> |
+
+**The floor was worth a lot.** Stage-1 policies were **2–3× worse** than a static plan. At the corrected floor DQN is **level** with it — the biggest effect we've measured on a learned controller, from *one environment parameter*.
+
+**Neither arm beats the controller that learns nothing.** DQN loses on 4 of 5 seeds; PPO on 5 of 5, and PPO loses to the plain static plan too.
+
+<span class="small">**DQN's −3.5 s vs static is NOT a win** — paired sd 22.1 s. Saying otherwise repeats defect 2 on the slide documenting defect 2. Note both actuated comparisons have *tighter* spreads (8.2, 10.3) than the static ones (22.1), so **the losses are the better-evidenced numbers here.** Per training seed: dqn 87.7/87.4/89.8 (agree), ppo 106.1/104.3/127.3 (seed 2 an outlier; even without it PPO ≈105 and still loses).</span>
+
+**Why two arms matter:** off-policy replay and on-policy rollouts are as far apart as our arms get, and both land behind a policy with no reward and no training. One algorithm failing is an anecdote; two is a property of the junction.
+
+<span class="small">30k steps, 3600 s episodes, 3 training seeds × 5 demand seeds each, `--defaults`. ~42 episodes is thin — but a *null* would be weak evidence, whereas a *loss to a non-learning reference* is stronger: more training must overturn a deficit, not just find a signal. **Untested:** full budget with hyperparameters re-tuned at the new floor. Reproduce: `./run_pilot_mg60.sh`, `analysis/pilot.py`.</span>
+
+---
+
 ## Results — off-peak demand (light traffic)
 
 <div class="columns" style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; align-items:center;">
@@ -213,8 +236,10 @@ Fixed-time is **already near-optimal** (0.39 s) — no RL agent can improve on i
 
 ## Reading the results honestly
 
-- **Peak:** no valid RL result. The standard to beat is **any static plan in the 45–90 s green band**, and Stage-1 policies were **2–3× worse** than it. The cause is structural — amber lost time at a 2-phase junction — not a training budget we can buy our way out of.
-- **`min_green` = 10 was the binding constraint**, and we measured it: a controller that learns nothing is **5.6× worse** than the fixed plan at that floor, and matches it at 60 s. The peak null is **over-determined** — the budget was spent where no controller can win. Fix the floor first; the bar afterwards is the **actuated controller**, not the static plan.
+- **Peak, Stage 1:** withdrawn in full — six defects, and corrected the policies were **2–3× worse** than a static plan that took no tuning to find.
+- **`min_green` = 10 was the binding constraint**, and we measured it: a controller that learns nothing is **5.6× worse** than the fixed plan at that floor, and matches it at 60 s. The Stage-1 null is **over-determined** — that budget was spent where no controller can win, so it says nothing about RL.
+- **Retrained at the corrected floor:** DQN recovers to **level with the static plan** (88.3 vs 91.8) — but **neither DQN nor PPO beats the controller that learns nothing** (+5.8 and +30.1, winning 1/5 and 0/5 seeds). Two opposite algorithm families, same verdict → a property of the **junction**, not of an optimiser.
+- **Not yet excluded:** a full budget with hyperparameters **re-tuned at the new floor**. Ours were selected at 10 s; the pilot ran `--defaults`.
 - **Off-peak:** the baseline is near-optimal; RL *cannot* beat it — the honest finding is a **ceiling**, not a failure. All agents stay mobile.
 - **λ ablation:** never run. Only λ = 0.5 exists — "safety-aware" is in the title and not yet in the results.
 - **One disclosed asymmetry:** off-peak A2C's hyperparameters were selected on *waiting time* rather than the shaped reward. At light demand the `−λ·safety` term dominates, so the reward-optimal policy is "never switch" = gridlock. Tuning on waiting time rejects that collapse. Training reward, env, and eval stay identical across all algorithms.
@@ -259,7 +284,7 @@ Fixed-time is **already near-optimal** (0.39 s) — no RL agent can improve on i
 
 **Also found:** a non-learning queue-actuated controller settles the "did our RL fail, or is there nothing to find?" question — see the headroom slide.
 
-**Next, in order:** (1) **raise `min_green` to 60 s** — measured, not guessed — and retrain there; (2) score it against the **actuated controller** (82.5 ± 10.1 s), not the static plan, since tying a policy that needs no training proves nothing; (3) *then* run the λ ablation, which has never been run. More training on the **current** action space is not the missing ingredient — and even on a corrected one the prize is ~10%, which is the argument for the corridor.
+**Next, in order:** (1) ~~raise `min_green` to 60 and retrain there~~ **done — DQN recovers to level with the static plan, neither arm beats the actuated controller**; (2) **re-tune at the corrected floor** — ours were selected at 10 s, so that is the cheapest remaining explanation to eliminate; (3) change the *problem*, not the optimiser — protected left phase, or the corridor; (4) *then* the λ ablation, which has never been run.
 
 ---
 

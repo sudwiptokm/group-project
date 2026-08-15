@@ -6,6 +6,11 @@
 [Withdrawn](#the-withdrawn-peak-claim). The off-peak half is unchanged and still
 stands.
 
+**Updated 2026-08-15 with retrained peak RL rows.** The arms were retrained at
+the corrected `min_green` = 60. There is now a valid peak RL measurement, where
+previously there was none: DQN recovers to level with the best static plan, and
+neither DQN nor PPO beats the non-learning queue-actuated controller.
+
 Two metrics appear below, and they are not interchangeable:
 
 | metric | what it measures | where it comes from |
@@ -78,13 +83,53 @@ Fixed-time at 60 s, in full, seeds 42–46 (`baseline.py --scenario peak
 | completion rate vs demand | 0.943 ± 0.032 |
 | in-network mean wait | 14.97 ± 3.55 s |
 
-There is no comparable RL row. Every trained peak model predates the safety fix
-(`1a678e51`), none was retrained, and the two 20k-step retraining attempts
-produced no learning (FINDINGS §"Training attempted"). The honest statement is
-**no valid RL measurement at peak exists**, not that RL scored badly. What can
-be said is that the learned policies from Stage 1 sat at 20–33 s in-network mean
-wait against a 60 s static plan's 11.5 s on the same 1200 s episodes — a factor
-of 2–3 the wrong way.
+### The retrained RL rows
+
+Stage-1's peak checkpoints are all invalid — they predate the safety fix, none
+was retrained, and two 20k-step attempts at the old floor produced no learning.
+So the arms were **retrained at the corrected `min_green` = 60**, `--defaults`,
+30k steps, 3 training seeds each, with **every** checkpoint evaluated on all 5
+demand seeds (15 runs per arm — not the single reference checkpoint that
+produced defect 4). `analysis/pilot.py`:
+
+| Controller | delay per completed trip (s) | trips | vs static 60 s, paired | vs actuated 60 s, paired |
+|---|---:|---:|---:|---:|
+| **queue-actuated, mg 60** | **82.5 ± 10.1** | 4156 | −9.3 ± 23.9, wins 3/5 | — |
+| **dqn, mg 60** | **88.3 ± 8.0** | 4102 | −3.5 ± 22.1, wins 2/5 | **+5.8 ± 8.2, wins 1/5** |
+| static 60 s plan | 91.8 ± 19.9 | 4076 | — | +9.3 ± 23.9 |
+| **ppo, mg 60** | **112.5 ± 17.9** | 4083 | +20.8 ± 22.1, wins 1/5 | **+30.1 ± 10.3, wins 0/5** |
+
+**The floor was worth an enormous amount.** Stage-1 policies were 2–3× worse
+than a competent static plan; at the corrected floor DQN is level with it. That
+is the largest single effect this project has measured on a learned controller,
+and it came from one environment parameter rather than from anything about
+learning.
+
+**Neither arm beats the controller that learns nothing.** DQN loses to the
+queue-actuated reference by 5.8 s on 4 of 5 seeds; PPO loses by 30.1 s on all
+five, and is beaten by the plain static plan as well. Both of those comparisons
+have *tighter* spreads (8.2 and 10.3) than the comparisons against the static
+plan (22.1), so the losses are the better-evidenced result here.
+
+**Do not read DQN's −3.5 s against the static plan as a win.** The paired sd is
+22.1 s across five seeds. Calling that an improvement would be defect 2 in
+miniature, on the very document that exists to record defect 2.
+
+Per training seed — dqn 87.7 / 87.4 / 89.8, ppo 106.1 / 104.3 / 127.3. DQN's
+policies agree, so its result is not one draw. PPO's seed 2 is an outlier; even
+dropping it, PPO sits near 105 s and still loses to both references.
+
+**Why two arms matter.** One algorithm failing is an anecdote about that
+algorithm. DQN and PPO are as far apart as this project's arms get — off-policy
+replay against on-policy rollouts — and both land behind a policy with no
+reward, no credit assignment and no sample budget.
+
+*Budget caveat, and it cuts one way.* 30k steps at 3600 s episodes is ~42
+episodes, which is thin. A **null** at this budget would be weak evidence. What
+was measured is a **loss to a non-learning reference**, which is stronger: more
+training would have to overturn a deficit rather than merely find a signal. The
+untested part is a full budget with hyperparameters re-tuned at the new floor —
+`params/*.json` were selected at a 10 s floor, and the pilot ran `--defaults`.
 
 ### Why: lost time to amber
 
@@ -244,18 +289,26 @@ objective fix in the footnote below.
 
 ## Bottom line
 
-- **Peak:** no valid RL result. A static plan anywhere in the 45–90 s green band
-  is the standard to beat, and Stage 1's learned policies were 2–3× worse than
-  it — a plan that needed no tuning to find. The reason is
-  structural — amber lost time at a 2-phase junction — not a training-budget
-  artefact.
+- **Peak, Stage 1:** withdrawn in full. Six defects; corrected, the learned
+  policies were 2–3× *worse* than a static plan that needed no tuning to find.
 - **The constraint that mattered was `min_green` = 10, not the algorithm.** A
   non-learning queue-actuated controller is 5.6× worse than the fixed plan at
-  that floor and matches it at 60 s. So the peak null is over-determined: the
-  whole training budget was spent in a region where no controller can win. At a
-  60 s floor there *is* adaptive headroom, but it is a ~10% variance reduction,
-  inside the seed noise on the mean, and collected by a controller that learns
-  nothing.
+  that floor and matches it at 60 s. So the Stage-1 peak null is
+  over-determined: the whole training budget was spent in a region where no
+  controller can win, and it says nothing about RL.
+- **Peak, retrained at the corrected floor:** the arms recover almost all of
+  that gap — DQN goes from 2–3× behind to level with the static plan
+  (88.3 ± 8.0 s against 91.8 ± 19.9). **But neither learner beats the
+  controller that learns nothing:** DQN +5.8 ± 8.2 s (wins 1/5 seeds), PPO
+  +30.1 ± 10.3 s (wins 0/5). PPO also loses to the plain static plan.
+- **So the answer is a property of the junction, not of an optimiser.** Two
+  algorithms as different as off-policy replay and on-policy rollouts land
+  behind a policy with no reward and no training. The remaining adaptive
+  headroom over a good static plan is ~10%, inside the seed noise on the mean,
+  and it is collected by the non-learning controller.
+- **What is not yet excluded:** hyperparameters re-tuned at the corrected floor,
+  at a full budget. `params/*.json` were selected at a 10 s floor and the pilot
+  ran `--defaults` at 30k steps.
 - **Off-peak:** fixed-time is near-optimal; RL cannot improve on it; all four
   agents stay mobile; a2c is the weakest.
 - **λ ablation:** never run. "Safety-aware" is in the title and not in the

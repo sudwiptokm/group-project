@@ -163,7 +163,7 @@ At a 60 s green the fixed-time plan performs as follows over seeds 42–46 (`bas
 
 The last two rows illustrate the metric problem directly: the same runs report 14.97 s of in-network mean waiting and 66.4 s of waiting per completed trip, a factor of four apart.
 
-**There is no comparable RL row, and this report does not manufacture one.** Every peak checkpoint predates the safety fix, and two retraining attempts at a 20k-step budget produced no learning (§7). What can be stated is that the Stage-1 policies scored 20–33 s of in-network mean waiting on 1200 s episodes where a static 60 s plan scores 11.5 s — a factor of two to three in the wrong direction.
+**Stage 1 provides no comparable RL row, and this report does not manufacture one.** Every Stage-1 peak checkpoint predates the safety fix, and two retraining attempts at a 20k-step budget produced no learning (§7). What can be stated of those policies is that they scored 20–33 s of in-network mean waiting on 1200 s episodes where a static 60 s plan scores 11.5 s — a factor of two to three in the wrong direction. **Valid RL rows, produced by retraining at the corrected action-space floor, are reported in §4.1.5.**
 
 #### 4.1.3 Why: lost time to amber
 
@@ -216,6 +216,31 @@ The static plan's weak draw is seed 43 (126.3 s, 3834 trips); the actuated contr
 
 Neither reading is therefore correct on its own. At `min_green` = 10 there was nothing for a learned controller to find, and that is precisely where the entire training budget was spent, which makes the peak null over-determined rather than informative about reinforcement learning. At `min_green` = 60 there is something to find, but it amounts to roughly a ten per cent variance reduction that a controller requiring no training already collects. **The appropriate reference for future work is consequently the actuated controller at a matched minimum green (82.5 ± 10.1 s), not the static plan**, and a learned policy must beat it by a margin large enough to clear a 24 s paired standard deviation.
 
+#### 4.1.5 Retraining at the corrected floor
+
+§4.1.4 shows the minimum green was the binding constraint. The obvious objection is that the constraint is an excuse — that it was the reinforcement learning, not the action space, that failed. Testing that requires retraining at the corrected floor, which is what this section reports.
+
+DQN and PPO, `--defaults`, 30,000 steps, 3600 s episodes, `--time-to-teleport 300`, `min_green` = 60, three training seeds each. **Every** checkpoint was evaluated on all five held-out demand seeds — fifteen runs per arm — rather than the single reference checkpoint that produced §4.1.1 defect 4 (`analysis/pilot.py`):
+
+| Controller | Delay per completed trip (s) | Trips | vs static 60 s, paired | vs actuated 60 s, paired |
+|---|---:|---:|---:|---:|
+| **Queue-actuated, mg 60** | **82.5 ± 10.1** | 4156 | −9.3 ± 23.9, wins 3/5 | — |
+| **DQN, mg 60** | **88.3 ± 8.0** | 4102 | −3.5 ± 22.1, wins 2/5 | **+5.8 ± 8.2, wins 1/5** |
+| Static 60 s plan | 91.8 ± 19.9 | 4076 | — | +9.3 ± 23.9 |
+| **PPO, mg 60** | **112.5 ± 17.9** | 4083 | +20.8 ± 22.1, wins 1/5 | **+30.1 ± 10.3, wins 0/5** |
+
+**The floor was worth a great deal.** Stage-1 policies sat two to three times behind a competently timed static plan; at the corrected floor DQN is level with it. This is the largest single effect the project has measured on a learned controller, and it was produced by one environment parameter rather than by anything about learning.
+
+**Neither arm beats the controller that learns nothing.** DQN loses to the queue-actuated reference by 5.8 s, winning one demand seed of five; PPO loses by 30.1 s, winning none, and is beaten by the plain static plan as well. Both of those comparisons carry tighter spreads — 8.2 s and 10.3 s — than the comparisons against the static plan at 22.1 s, so the losses are the better-evidenced findings in this table.
+
+**DQN's −3.5 s against the static plan is not a win, and this report does not present it as one.** The paired standard deviation is 22.1 s across five seeds. Reporting that difference as an improvement would reproduce defect 2 at smaller scale, in the document that exists to record defect 2.
+
+Per training seed, so the aggregate need not be taken on trust: DQN 87.7 / 87.4 / 89.8, PPO 106.1 / 104.3 / 127.3. DQN's three policies agree closely, so its result is not a single fortunate draw. PPO's third seed is a clear outlier; excluding it, PPO still sits near 105 s and still loses to both references.
+
+**Two arms agreeing is what makes this a property of the junction.** A single algorithm failing is an anecdote about that algorithm. DQN and PPO are as far apart as this study's arms get — off-policy replay against on-policy rollouts — and both finish behind a policy that requires no reward, no credit assignment and no sample budget.
+
+**The budget caveat, which cuts in one direction.** Thirty thousand steps at 3600 s episodes is approximately 42 episodes, which is thin. A *null* at this budget would be weak evidence, since it could not separate an absent signal from an insufficient budget. What was measured instead is a *loss to a non-learning reference*, which is the stronger outcome: further training would have to overturn a deficit rather than merely locate a signal. The untested possibility is a full budget with hyperparameters re-tuned at the corrected floor — `params/*.json` were selected against a 10 s floor, and the pilot ran on library defaults.
+
 ### 4.2 Off-Peak Demand (Light Traffic)
 
 | Algorithm | Mean waiting (s) | ± std | Mean speed (m/s) |
@@ -238,11 +263,15 @@ Off-peak demand is light, and here the fixed-time controller is already near-opt
 
 ## 5. Discussion
 
-**No algorithm can be declared a winner, and the project no longer claims one.** The peak comparison that ranked DQN first was produced by the pipeline audited in §4.1, and nothing survives it. Off-peak, DQN is the closest to the baseline but does not beat it. A ranking of four algorithms is only meaningful once at least one of them beats a competent static plan, and none does.
+**No algorithm can be declared a winner, and the project no longer claims one.** The peak comparison that ranked DQN first was produced by the pipeline audited in §4.1, and nothing survives it. Off-peak, DQN is the closest to the baseline but does not beat it. At peak, after retraining at the corrected floor (§4.1.5), DQN is level with a competent static plan and PPO is behind it — and **neither beats the non-learning queue-actuated controller**. A ranking of algorithms is only meaningful once at least one of them beats a controller that requires no training, and neither does.
 
 **The ceiling is the finding, and it is the same ceiling in both regimes.** Off-peak it is obvious: with almost no queuing to relieve, the 0.39 s baseline sits near the physical floor. At peak it is less obvious but better evidenced — the static sweep in §4.1.2 shows a well-chosen green already captures most of the achievable performance, while the amber-loss arithmetic in §4.1.3 shows that the action space on offer (two phases, 5 s decisions, 10 s minimum green) charges a controller up to 23% of capacity for the switching it is being asked to learn. A learned controller is competing for a margin the environment has largely spent in advance.
 
-**This makes the negative result informative rather than inconclusive.** It identifies a mechanism, predicts where RL *would* have room, and — in §4.1.4 — tests that prediction instead of resting on it. The prediction held in its first and most important part: raising the minimum green from 10 s to 60 s is worth a factor of six to a controller that learns nothing at all, which locates the limitation in the action space rather than in the learning. It also failed in a second, more instructive part: even with the floor corrected, the adaptive margin over a good static plan is roughly ten per cent and lies inside the seed noise on the mean. **The honest summary is that this project's peak training budget was spent in a region of the action space where no controller can win, and that correcting it would still leave a small prize.** That is why the remaining structural extensions — a protected left-turn phase, or coordination across several junctions, neither of which a single static plan can imitate — matter more than any further work on this junction.
+**This makes the negative result informative rather than inconclusive.** It identifies a mechanism, predicts where RL *would* have room, and then tests that prediction twice rather than resting on it — with a non-learning controller in §4.1.4, and by retraining in §4.1.5.
+
+The prediction held in its first and most important part: raising the minimum green from 10 s to 60 s is worth a factor of 5.6 to a controller that learns nothing, and it moves DQN from two-to-three times behind a static plan to level with it. The limitation was the action space, not the learning.
+
+It failed in a second, more instructive part. Even with the floor corrected, the adaptive margin over a good static plan is roughly ten per cent and lies inside the seed noise on the mean — and **both retrained arms finish behind the controller that learns nothing**, on the better-evidenced of the two comparisons available. **The honest summary is that this project's peak training budget was spent in a region of the action space where no controller can win, and that correcting it leaves a prize too small for these learners to collect.** That is why the remaining structural extensions — a protected left-turn phase, or coordination across several junctions, neither of which a single static plan can imitate — matter more than any further work on this junction.
 
 **Disclosed A2C off-peak asymmetry.** For the single off-peak A2C cell, the hyperparameter-selection *objective* was cumulative waiting time (minimise) rather than the shaped reward used to select DQN, PPO, and QR-DQN. The reason is structural and worth stating precisely. At light off-peak demand throughput is essentially flat, so the `−λ · safety` term dominates the shaped reward. Under that reward the *reward-optimal* policy is "never switch phase" — which yields the best safety score and zero throughput, i.e. gridlock. Tuning A2C on the shaped reward selected exactly that collapse. Retuning A2C on waiting time makes gridlock the worst possible score and rejects it. Crucially, this changes only the **HP-selection criterion for one cell** — the training reward, environment, action/observation space, seeds, and evaluation protocol all remain identical across every algorithm and scenario, so the comparison is still apples-to-apples on what the agents optimise and how they are scored at evaluation.
 
@@ -302,6 +331,8 @@ This project set out to establish which of four RL algorithms best beats a fixed
 
 Getting there required withdrawing the earlier peak headline and rebuilding the measurement stack around it: completed-trip delay instead of an in-network average that a stranded queue inflates, a swept static plan instead of a 10 s cycler mislabelled as fixed-time, and baselines paired to the agents' own demand seeds. Three of the six defects concern how `sumo-rl` is commonly used rather than anything specific to this codebase, which makes them worth reporting in their own right.
 
-The finding also points at where an adaptive controller *would* have room, and §4.1.4 tests that pointer rather than asserting it. A non-learning queue-actuated controller — no reward, no training, perfect queue information — is 5.6 times worse than the fixed plan at the 10 s minimum green this project ran on, and matches it at 60 s. The action space, not the algorithm, was the binding constraint, and the entire peak training budget was spent inside it. Correcting the floor is therefore the first thing any continuation should do, and the reference to beat afterwards is that actuated controller rather than the static plan.
+The finding also points at where an adaptive controller *would* have room, and §4.1.4 tests that pointer rather than asserting it. A non-learning queue-actuated controller — no reward, no training, perfect queue information — is 5.6 times worse than the fixed plan at the 10 s minimum green this project ran on, and matches it at 60 s. The action space, not the algorithm, was the binding constraint, and the entire Stage-1 peak training budget was spent inside it.
+
+Retraining at the corrected floor (§4.1.5) closes the argument from the other side. DQN moves from two-to-three times behind a competent static plan to level with it — the largest effect this project has measured on a learned controller, obtained from a single environment parameter. **Yet neither DQN nor PPO beats the controller that learns nothing**, and PPO does not beat the static plan either. Two algorithms drawn from opposite families reaching the same verdict is what elevates this from an anecdote about one optimiser to a property of the junction. What remains untested is a full training budget with hyperparameters re-tuned at the corrected floor, which is the first thing a continuation should do before concluding anything stronger.
 
 Even corrected, the margin at this junction is about ten per cent and sits inside the seed noise, which is the clearest possible argument for changing the problem rather than the optimiser. Coordination across junctions is the one thing a static plan cannot imitate. Scaling to a **multi-intersection arterial corridor with coordinated MARL** — for which an environment prototype has already been built — is therefore not merely the next increment but the first setting in which the question this project asked can be answered in RL's favour.
