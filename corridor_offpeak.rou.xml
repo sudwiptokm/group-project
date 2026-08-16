@@ -12,9 +12,9 @@
     <route id="x2" edges="N2_C2 C2_S2"/>
     <route id="x3" edges="N3_C3 C3_S3"/>
 
-    <flow id="f_eb" route="eb" type="mixed" begin="0" end="3600" vehsPerHour="350"/>
-    <flow id="f_wb" route="wb" type="mixed" begin="0" end="3600" vehsPerHour="350"/>
-    <flow id="f_x1" route="x1" type="mixed" begin="0" end="3600" vehsPerHour="100"/>
-    <flow id="f_x2" route="x2" type="mixed" begin="0" end="3600" vehsPerHour="100"/>
-    <flow id="f_x3" route="x3" type="mixed" begin="0" end="3600" vehsPerHour="100"/>
+    <flow id="f_eb" route="eb" type="mixed" begin="0" end="3600" period="exp(0.097222)"/>
+    <flow id="f_wb" route="wb" type="mixed" begin="0" end="3600" period="exp(0.097222)"/>
+    <flow id="f_x1" route="x1" type="mixed" begin="0" end="3600" period="exp(0.027778)"/>
+    <flow id="f_x2" route="x2" type="mixed" begin="0" end="3600" period="exp(0.027778)"/>
+    <flow id="f_x3" route="x3" type="mixed" begin="0" end="3600" period="exp(0.027778)"/>
 </routes>

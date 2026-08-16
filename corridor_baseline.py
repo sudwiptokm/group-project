@@ -15,37 +15,60 @@ SIGNAL_POSITIONS = [0.0, 200.0, 400.0]
 FREE_FLOW_SPEED = 13.89
 
 
-def _max_pressure_actions(env):
-    """Return per-agent action dict using max-pressure rule.
-
-    For each traffic signal, compute the pressure for each green phase:
-    pressure = total halting vehicles on the incoming lanes that phase gives
-    green to (downstream approximated as 0). Pick the max-pressure phase.
+def _phase_movements(ts, phase_index) -> set:
+    """The (incoming_lane, outgoing_lane) pairs a green phase discharges.
 
     Phase state is read from ts.green_phases[p].state (sumolib.net.Phase).
     A link index i is served by a phase if state[i] in 'Gg'.
     links = ts.sumo.trafficlight.getControlledLinks(ts.id): links[i] is a list
-    of (in_lane, out_lane, via) tuples; in_lane = links[i][0][0].
+    of (in_lane, out_lane, via) tuples.
+    """
+    links = ts.sumo.trafficlight.getControlledLinks(ts.id)
+    state = ts.green_phases[phase_index].state
+    movements = set()
+    for i, link in enumerate(links):
+        if i < len(state) and state[i] in "Gg":
+            for conn in link:
+                if conn:
+                    movements.add((conn[0], conn[1]))   # (in_lane, out_lane)
+    return movements
+
+
+def _max_pressure_actions(env):
+    """Return per-agent action dict using the max-pressure rule.
+
+    This is real max-pressure: every movement contributes its upstream queue
+    MINUS the queue on the lane it discharges into. The first version of this
+    function passed outgoing_queue=0.0, which is not max-pressure at all -- it
+    reduces to "serve the longest incoming queue", a purely local rule with no
+    knowledge of whether the receiving lane can accept traffic.
+
+    That mattered here for two reasons. It is the reference an RL controller
+    has to beat, and beating a weakened reference is the defect this project
+    already withdrew a headline over (docs/FINDINGS_2026-08-12.md section 6, the
+    "fixed-time" baseline that was not a fixed-time plan). And on a corridor the
+    downstream term is precisely the coordination signal: without it the
+    controller cheerfully discharges into a lane that is already backed up,
+    which is the spillback case a multi-intersection controller exists to
+    handle.
+
+    Queues are read once per lane per decision step and cached: the same lane
+    appears in several movements, and each read is a TraCI round trip.
     """
     actions = {}
     for ts_id in env.ts_ids:
         ts = env.traffic_signals[ts_id]
-        links = ts.sumo.trafficlight.getControlledLinks(ts.id)
-        pressures = {}
-        for p in range(ts.num_green_phases):
-            state = ts.green_phases[p].state
-            served_lanes = {
-                links[i][0][0]
-                for i in range(len(state))
-                if i < len(links) and links[i] and state[i] in "Gg"
-            }
-            incoming = sum(
-                ts.sumo.lane.getLastStepHaltingNumber(lane)
-                for lane in served_lanes
-            )
-            # downstream queue approximated as 0 (corridor exits drain freely);
-            # use the shared pure helper so the pressure definition lives in one place
-            pressures[p] = cc.movement_pressure(incoming, outgoing_queue=0.0)
+        cache = {}
+
+        def queue_of(lane, _ts=ts, _cache=cache):
+            if lane not in _cache:
+                _cache[lane] = _ts.sumo.lane.getLastStepHaltingNumber(lane)
+            return _cache[lane]
+
+        pressures = {
+            p: cc.phase_pressure(_phase_movements(ts, p), queue_of)
+            for p in range(ts.num_green_phases)
+        }
         actions[ts_id] = cc.max_pressure_phase(pressures)
     return actions
 
