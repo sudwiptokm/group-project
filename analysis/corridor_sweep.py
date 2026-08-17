@@ -47,7 +47,7 @@ import pandas as pd
 
 import corridor_baseline as cb
 from analysis.tripinfo import reduce_tripinfo
-from env_common import tripinfo_path
+from env_common import CORRIDOR_SCENARIOS, tripinfo_path
 
 OUT_CSV = os.path.join(REPO, "analysis", "corridor_sweep.csv")
 
@@ -106,21 +106,27 @@ def sweep(controllers, scenario, seeds, min_greens, force=False) -> pd.DataFrame
     return pd.DataFrame(rows)
 
 
-def report(df: pd.DataFrame) -> None:
-    """Per-floor means, and the paired reactive-vs-fixed difference per floor.
+def best_floors(df: pd.DataFrame) -> dict:
+    """{(scenario, controller): (best min_green, its mean delay per trip)}."""
+    means = df.groupby(["scenario", "controller", "min_green"])["delay_per_trip"].mean()
+    out = {}
+    for (scenario, controller), s in means.groupby(level=[0, 1]):
+        s = s.droplevel([0, 1])
+        out[(scenario, controller)] = (int(s.idxmin()), float(s.min()))
+    return out
+
+
+def paired_diffs(df: pd.DataFrame) -> list:
+    """max_pressure - green_wave per (scenario, floor), paired on the seed.
 
     Paired on the seed: both controllers see the same demand realisation, so the
     per-seed difference removes the demand variance that made the single
-    intersection's unpaired comparisons unresolvable.
+    intersection's unpaired comparisons unresolvable. Pairing NEVER crosses
+    scenarios -- seed 42 under corridor_peak and seed 42 under corridor_tidal
+    are different demands and differencing them means nothing.
     """
-    print("\n=== delay per completed trip (s), mean +/- sd over seeds ===")
-    piv = df.pivot_table(index="min_green", columns="controller",
-                         values="delay_per_trip", aggfunc=["mean", "std", "count"])
-    print(piv.round(1).to_string())
-
-    print("\n=== paired: max_pressure - green_wave, per floor ===")
-    print("negative = the reactive controller wins, i.e. this corridor rewards adaptation")
-    for mg, g in df.groupby("min_green"):
+    rows = []
+    for (scenario, mg), g in df.groupby(["scenario", "min_green"]):
         wide = g.pivot_table(index="seed", columns="controller",
                              values="delay_per_trip")
         if not {"green_wave", "max_pressure"}.issubset(wide.columns):
@@ -129,17 +135,94 @@ def report(df: pd.DataFrame) -> None:
         if wide.empty:
             continue
         d = wide["max_pressure"] - wide["green_wave"]
-        wins = int((d < 0).sum())
-        sd = d.std(ddof=1) if len(d) > 1 else float("nan")
-        print(f"  mg {mg:>3d}: {d.mean():+7.1f} +/- {sd:5.1f} s   "
-              f"max_pressure wins {wins}/{len(d)} seeds")
+        rows.append({
+            "scenario": scenario,
+            "min_green": int(mg),
+            "mean": float(d.mean()),
+            "sd": float(d.std(ddof=1)) if len(d) > 1 else float("nan"),
+            "wins": int((d < 0).sum()),
+            "n": int(len(d)),
+        })
+    return rows
 
-    best = df.groupby(["controller", "min_green"])["delay_per_trip"].mean()
-    print("\n=== best floor per controller (the bar IPPO must clear) ===")
-    for controller in sorted(df["controller"].unique()):
-        s = best[controller]
-        print(f"  {controller:13s} best mg={s.idxmin():<3d} "
-              f"delay/trip={s.min():.1f}s   (worst mg={s.idxmax()}, {s.max():.1f}s)")
+
+# two controllers whose completed-trip counts differ by more than this at the
+# same floor are not being ranked on the same population of vehicles
+COMPLETION_TOLERANCE = 0.02
+
+
+def completion_gaps(df: pd.DataFrame) -> list:
+    """Floors where the controllers completed materially different trip counts.
+
+    delay_per_trip is delay per COMPLETED trip. A controller that jams an
+    approach until hundreds of vehicles never finish is scored on the survivors
+    and can look better than one that cleared everybody -- the survivorship bias
+    behind this project's withdrawn headline. corridor_tidal loads the dominant
+    direction past what an even green split can discharge on purpose, so this is
+    an expected condition there, not a hypothetical one.
+    """
+    gaps = []
+    for (scenario, mg), g in df.groupby(["scenario", "min_green"]):
+        trips = g.groupby("controller")["trips"].mean()
+        if len(trips) < 2 or trips.max() <= 0:
+            continue
+        spread = (trips.max() - trips.min()) / trips.max()
+        if spread > COMPLETION_TOLERANCE:
+            gaps.append({
+                "scenario": scenario,
+                "min_green": int(mg),
+                "spread": float(spread),
+                "trips": {c: float(n) for c, n in trips.items()},
+            })
+    return gaps
+
+
+def report(df: pd.DataFrame) -> None:
+    """Per-floor means and paired differences, one block per scenario.
+
+    Everything here is grouped by scenario first. The CSV accumulates every
+    scenario ever swept, and a table that pools them reports a mean over two
+    different demands and a best floor that belongs to neither.
+    """
+    diffs = paired_diffs(df)
+    best = best_floors(df)
+    gaps = completion_gaps(df)
+
+    for scenario, sdf in df.groupby("scenario"):
+        print(f"\n################ {scenario} ################")
+        print("\n=== delay per completed trip (s), mean +/- sd over seeds ===")
+        piv = sdf.pivot_table(index="min_green", columns="controller",
+                              values="delay_per_trip",
+                              aggfunc=["mean", "std", "count"])
+        print(piv.round(1).to_string())
+
+        print("\n=== trips completed, mean over seeds ===")
+        print(sdf.pivot_table(index="min_green", columns="controller",
+                              values="trips", aggfunc="mean").round(0).to_string())
+
+        here = [g for g in gaps if g["scenario"] == scenario]
+        if here:
+            print("\n!!! survivorship warning: these floors rank the controllers on "
+                  "different populations of vehicles.")
+            print("    delay per COMPLETED trip favours whoever finished fewer of them.")
+            for g in sorted(here, key=lambda g: g["min_green"]):
+                counts = "  ".join(f"{c}={n:.0f}" for c, n in sorted(g["trips"].items()))
+                print(f"    mg {g['min_green']:>3d}: {g['spread'] * 100:.1f}% spread   {counts}")
+
+        print("\n=== paired: max_pressure - green_wave, per floor ===")
+        print("negative = the reactive controller wins, i.e. this scenario rewards adaptation")
+        for r in sorted((r for r in diffs if r["scenario"] == scenario),
+                        key=lambda r: r["min_green"]):
+            print(f"  mg {r['min_green']:>3d}: {r['mean']:+7.1f} +/- {r['sd']:5.1f} s   "
+                  f"max_pressure wins {r['wins']}/{r['n']} seeds")
+
+        print("\n=== best floor per controller (the bar IPPO must clear) ===")
+        worst = sdf.groupby(["controller", "min_green"])["delay_per_trip"].mean()
+        for controller in sorted(sdf["controller"].unique()):
+            mg, delay = best[(scenario, controller)]
+            w = worst[controller]
+            print(f"  {controller:13s} best mg={mg:<3d} delay/trip={delay:.1f}s   "
+                  f"(worst mg={w.idxmax()}, {w.max():.1f}s)")
 
 
 def main():
@@ -147,7 +230,7 @@ def main():
         sys.exit("SUMO_HOME not set")
     p = argparse.ArgumentParser()
     p.add_argument("--scenario", default="corridor_peak",
-                   choices=["corridor_peak", "corridor_offpeak"])
+                   choices=list(CORRIDOR_SCENARIOS))
     p.add_argument("--controllers", nargs="+", default=list(cb.CONTROLLERS),
                    choices=list(cb.CONTROLLERS))
     p.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44])

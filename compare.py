@@ -47,7 +47,7 @@ import re
 import pandas as pd
 
 from analysis.tripinfo import count_departures, reduce_tripinfo
-from env_common import SCENARIO_ROUTES, tripinfo_path
+from env_common import CORRIDOR_SCENARIOS, SCENARIO_ROUTES, tripinfo_path
 
 # episode-averaged columns we surface (present in every sumo-rl eval CSV)
 METRICS = [
@@ -212,7 +212,7 @@ def main():
             if not base.empty:
                 rows.append(_summarise(base, "fixedtime", scenario, lam))
 
-    corridor_scenarios = ["corridor_peak", "corridor_offpeak"]
+    corridor_scenarios = list(CORRIDOR_SCENARIOS)
     corridor_controllers = ["green_wave", "max_pressure"]
     for scenario in corridor_scenarios:
         for ctrl in corridor_controllers:

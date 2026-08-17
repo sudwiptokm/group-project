@@ -267,8 +267,33 @@ netconvert --node-files corridor.nod.xml --edge-files corridor.edg.xml \
 `make_scenarios.py` writes corridor demand alongside the single-intersection files:
 
 ```bash
-python make_scenarios.py   # writes corridor_peak.rou.xml + corridor_offpeak.rou.xml
+python make_scenarios.py   # corridor_peak / corridor_offpeak / corridor_tidal
 ```
+
+Corridor demand uses `period="exp(rate)"` (Poisson arrivals) so `sumo_seed` genuinely
+redraws it; the single-intersection files keep deterministic `vehsPerHour` on purpose —
+see the `make_scenarios.py` docstring before changing either.
+
+Three scenarios:
+
+| scenario | arterial demand | what it tests |
+|---|---|---|
+| `corridor_peak` | 1050 veh/h each way, constant | stationary, symmetric — one fixed offset plan can serve it |
+| `corridor_offpeak` | 350 veh/h each way, constant | same, lightly loaded |
+| `corridor_tidal` | 1400/700 eastbound-dominant for 30 min, then reversed | non-stationary — a fixed plan cannot serve both halves |
+
+`corridor_tidal` carries the same 2100 veh/h of arterial demand as `corridor_peak`, so the
+two differ in structure and not in how much traffic there is. The 2:1 ratio is deliberate:
+an even green split serves roughly 1125 veh/h per approach here, so 1400 is more than a
+fixed round-robin can discharge while 700 wastes green on the other side. An earlier
+version capped the dominant direction at 1050 and measured *easier* than peak — a tide a
+round-robin handles comfortably tests nothing.
+
+The cost is that the fixed plan is expected to oversaturate, so trip counts diverge
+between controllers and delay per *completed* trip becomes survivorship-biased.
+`analysis/corridor_sweep.py` reports completion counts per cell and prints a survivorship
+warning at floors where they differ by more than 2%. Read that warning before comparing
+delays on this scenario.
 
 ### Non-RL baselines
 
@@ -283,8 +308,19 @@ python corridor_baseline.py --scenario corridor_peak --controller max_pressure -
 ```
 
 Both write eval CSVs to `logs/` in the same schema as the single-intersection eval CSVs.
-Running `python compare.py` afterwards includes `corridor_peak` / `corridor_offpeak` rows
-alongside the single-intersection comparison table.
+Running `python compare.py` afterwards includes a row per corridor scenario alongside the
+single-intersection comparison table.
+
+Neither baseline means anything until its action-space floor is swept — for `green_wave`
+the floor *is* the green duration, since it requests a phase change every decision step.
+`analysis/corridor_sweep.py` does that sweep and is resumable (an existing tripinfo file
+is reused, so it can be re-invoked until complete):
+
+```bash
+python analysis/corridor_sweep.py --scenario corridor_tidal \
+  --seeds 42 43 44 45 46 47 48 49 50 51 --min-greens 5 10 15 20 25 30 45 60 75 90
+python analysis/corridor_sweep.py --report-only     # re-print from analysis/corridor_sweep.csv
+```
 
 ### Multi-agent env
 

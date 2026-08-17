@@ -4,7 +4,8 @@ import argparse
 import os
 
 import corridor_control as cc
-from env_common import DEFAULT_MIN_GREEN, make_corridor_env, resolve_min_green
+from env_common import (CORRIDOR_SCENARIOS, DEFAULT_MIN_GREEN,
+                        make_corridor_env, resolve_min_green)
 
 CONTROLLERS = ("green_wave", "max_pressure")
 
@@ -138,7 +139,7 @@ if __name__ == "__main__":
     p.add_argument(
         "--scenario",
         default="corridor_offpeak",
-        choices=["corridor_peak", "corridor_offpeak"],
+        choices=list(CORRIDOR_SCENARIOS),
     )
     p.add_argument("--controller", default="green_wave", choices=CONTROLLERS)
     p.add_argument("--seed", type=int, default=0)
