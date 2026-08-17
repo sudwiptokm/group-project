@@ -334,7 +334,15 @@ SCENARIO_ROUTES = {
     "offpeak": "traffic_offpeak.rou.xml",
     "corridor_peak": "corridor_peak.rou.xml",
     "corridor_offpeak": "corridor_offpeak.rou.xml",
+    # non-stationary: the arterial's dominant direction reverses at half time,
+    # so no single fixed offset plan serves the whole episode
+    "corridor_tidal": "corridor_tidal.rou.xml",
 }
+
+# Single source of truth for the corridor CLIs' --scenario choices and for the
+# scenarios compare.py reports. Deriving it means a scenario added to
+# SCENARIO_ROUTES cannot reach some drivers and not others.
+CORRIDOR_SCENARIOS = tuple(k for k in SCENARIO_ROUTES if k.startswith("corridor_"))
 
 
 class SafetyLoggingEnv(SumoEnvironment):
