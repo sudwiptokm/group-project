@@ -337,6 +337,10 @@ SCENARIO_ROUTES = {
     # non-stationary: the arterial's dominant direction reverses at half time,
     # so no single fixed offset plan serves the whole episode
     "corridor_tidal": "corridor_tidal.rou.xml",
+    # stationary arterial, uneven cross-street demand per node (C1=150/C2=600/
+    # C3=150 veh/h): a fixed-time plan applies one global through/cross split
+    # to every signal, so it cannot give C2 more cross green than C1/C3 do
+    "corridor_skew": "corridor_skew.rou.xml",
 }
 
 # Single source of truth for the corridor CLIs' --scenario choices and for the
