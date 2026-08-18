@@ -35,6 +35,37 @@ def _phase_movements(ts, phase_index) -> set:
     return movements
 
 
+def green_wave_actions(env) -> dict:
+    """Fixed-time coordinated plan, evaluated at the current simulation TIME.
+
+    Each signal holds a phase for `plan_phase_seconds(min_green, ...)` and its
+    whole cycle is shifted by the free-flow travel time from the first signal,
+    so a platoon released upstream meets the same phase downstream.
+
+    The predecessor asked for `(step - offset_steps) % num_green_phases`, i.e. it
+    alternated its request every decision step and let sumo-rl's min_green
+    blocking decide the switching times. That produced a controller with no green
+    duration of its own: the realised cycle came out 15, 15, 25, 25, 35, 35 s for
+    min_green 5, 10, 15, 20, 25, 30 -- adjacent floors collapsing onto identical
+    plans -- and the offsets were re-timed by the blocking, which is the
+    progression a green wave exists to create. A fixed-time baseline that is not
+    a fixed-time plan is the defect in docs/FINDINGS_2026-08-12.md section 6.
+
+    Switching still lands on the decision grid, so an offset of 14.4 s is
+    realised as 15 s. That quantisation is a property of delta_time=5 and is
+    disclosed; it is not the same thing as having no offset at all.
+    """
+    offsets = cc.green_wave_offsets(SIGNAL_POSITIONS, free_flow_speed=FREE_FLOW_SPEED)
+    actions = {}
+    for i, ts_id in enumerate(env.ts_ids):
+        ts = env.traffic_signals[ts_id]
+        phase_seconds = cc.plan_phase_seconds(ts.min_green, ts.yellow_time,
+                                              env.delta_time)
+        actions[ts_id] = cc.fixed_time_phase(env.sim_step, offsets[i],
+                                             ts.num_green_phases, phase_seconds)
+    return actions
+
+
 def _max_pressure_actions(env):
     """Return per-agent action dict using the max-pressure rule.
 
@@ -82,9 +113,9 @@ def run(scenario: str, controller: str, seed: int, min_green: int = None,
 
     `min_green` is not a detail here -- it defines both baselines:
 
-      * green_wave requests a phase change on EVERY decision step, so the only
-        thing setting its green duration is the floor. A "green wave" run at
-        min_green=10 is a 10 s-green plan, which is the regime the single
+      * green_wave holds each phase for plan_phase_seconds(min_green), so the
+        floor sets the plan's phase duration and therefore its cycle. A run at
+        min_green=10 is a 15 s-phase plan, near the regime the single
         intersection measured a perfect-information controller to be 5.6x worse
         than a fixed plan in. The floor is this baseline's design parameter and
         has to be swept before the baseline means anything.
@@ -100,26 +131,14 @@ def run(scenario: str, controller: str, seed: int, min_green: int = None,
     env = make_corridor_env(seed=seed, scenario=scenario, lam=0.0, out_csv=csv,
                             min_green=min_green, tripinfo=tripinfo)
     env.reset()
-    offsets = cc.green_wave_offsets(SIGNAL_POSITIONS, free_flow_speed=FREE_FLOW_SPEED)
-    step = 0
     done = False
     while not done:
         if controller == "green_wave":
-            # green-wave is inline because it needs `step` (the loop counter) as
-            # state; max-pressure is stateless per step so it lives in a helper.
-            actions = {}
-            for i, ts_id in enumerate(env.ts_ids):
-                ngp = env.traffic_signals[ts_id].num_green_phases
-                # offsets are quantised to whole decision steps: at delta_time=5s a
-                # 14.4s offset becomes 2 steps (10s). This coarsens the green wave —
-                # a known limitation of the discrete decision interval, not a bug.
-                shifted = step - int(offsets[i] // env.delta_time)
-                actions[ts_id] = max(shifted, 0) % ngp
+            actions = green_wave_actions(env)
         else:
             actions = _max_pressure_actions(env)
         _, _, dones, _ = env.step(actions)
         done = dones["__all__"]
-        step += 1
     # sumo-rl only flushes the CSV on the NEXT reset(); a single eval episode
     # never gets one, so save it explicitly (mirrors baseline.py exactly).
     env.save_csv(env.out_csv_name, env.episode)

@@ -10,12 +10,16 @@ gets calibrated FIRST.
 
 The floor is not a detail for either reference:
 
-  * green_wave requests a phase change on every decision step, so nothing sets
-    its green duration except `min_green`. Sweeping the floor IS sweeping the
-    green-wave plan; a single uncalibrated point is not a baseline.
+  * green_wave's phase duration IS the floor (rounded up to the decision grid),
+    so sweeping the floor is sweeping the green-wave plan itself; a single
+    uncalibrated point is not a baseline.
   * max_pressure is reactive, so the floor is a genuine constraint on how fast
     it may respond -- exactly the knob the actuated sweep found to be worth a
     factor of 5.6 at the single junction.
+
+Neither controller acts on the floor directly: a change is honoured at the first
+decision step at or after min_green + yellow_time. floor_aliases() reports that
+mapping so the curve is read on the axis the controllers actually see.
 
 What this answers, before a single training step is spent:
 
@@ -46,8 +50,10 @@ import numpy as np
 import pandas as pd
 
 import corridor_baseline as cb
+import corridor_control as cc
 from analysis.tripinfo import reduce_tripinfo
-from env_common import CORRIDOR_SCENARIOS, tripinfo_path
+from env_common import (CORRIDOR_DELTA_TIME, CORRIDOR_SCENARIOS,
+                        CORRIDOR_YELLOW_TIME, tripinfo_path)
 
 OUT_CSV = os.path.join(REPO, "analysis", "corridor_sweep.csv")
 
@@ -104,6 +110,30 @@ def sweep(controllers, scenario, seeds, min_greens, force=False) -> pd.DataFrame
                       f"delay/trip={r['delay_per_trip']:7.1f}s "
                       f"trips={r['trips']:5d}  ({took})", flush=True)
     return pd.DataFrame(rows)
+
+
+def floor_aliases(min_greens, yellow_time: int = None,
+                  delta_time: int = None) -> dict:
+    """{effective switching interval (s): [floors that produce it]}.
+
+    min_green is not the quantity either controller acts on. A phase change is
+    honoured at the first decision step at or after min_green + yellow_time, so
+    what governs both references is that sum rounded up to the decision grid --
+    which is exactly corridor_control.plan_phase_seconds, the green_wave plan's
+    phase duration.
+
+    Any entry with more than one floor is a floor the sweep is sampling twice
+    under two names. Reporting those as separate points overstates the
+    resolution of the floor curve, and a "best floor" chosen among them is
+    arbitrary between equals.
+    """
+    yellow_time = CORRIDOR_YELLOW_TIME if yellow_time is None else yellow_time
+    delta_time = CORRIDOR_DELTA_TIME if delta_time is None else delta_time
+    out = {}
+    for mg in sorted(min_greens):
+        out.setdefault(cc.plan_phase_seconds(int(mg), yellow_time, delta_time),
+                       []).append(int(mg))
+    return out
 
 
 def best_floors(df: pd.DataFrame) -> dict:
@@ -195,6 +225,23 @@ def report(df: pd.DataFrame) -> None:
                               values="delay_per_trip",
                               aggfunc=["mean", "std", "count"])
         print(piv.round(1).to_string())
+
+        aliases = floor_aliases(sorted(sdf["min_green"].unique()))
+        print("\n=== floor -> effective switching interval (s) ===")
+        print("    what the signal acts on is min_green + yellow rounded up to the "
+              "decision grid,")
+        print("    so this, not the floor label, is the curve's x-axis and its "
+              "resolution limit.")
+        line = "   " + "  ".join(f"mg {mg:>2d} -> {secs}s"
+                                 for secs in sorted(aliases)
+                                 for mg in aliases[secs])
+        print(line)
+        collapsed = {s: f for s, f in aliases.items() if len(f) > 1}
+        if collapsed:
+            print("    !!! aliased floors -- these are one point sampled under several "
+                  "names:")
+            for secs, floors in sorted(collapsed.items()):
+                print(f"        {secs}s <- mg {floors}")
 
         print("\n=== trips completed, mean over seeds ===")
         print(sdf.pivot_table(index="min_green", columns="controller",

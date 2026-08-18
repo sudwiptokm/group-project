@@ -99,6 +99,38 @@ def test_completion_gap_reports_both_sides():
     assert gap["trips"]["max_pressure"] == pytest.approx(2990)
 
 
+def test_floors_that_produce_the_same_switching_interval_are_detected():
+    """min_green is not what the signal acts on.
+
+    A request is honoured at the first decision step at or after
+    min_green + yellow_time, so the quantity that governs the controller is that
+    sum rounded up to the decision grid. Floors 5, 6 and 7 are all a 10 s
+    interval -- sweeping them is sweeping one point three times, and reporting
+    them as three floors overstates the resolution of the curve.
+    """
+    aliases = cs.floor_aliases([5, 6, 7, 10, 15])
+    assert aliases[10] == [5, 6, 7]
+    assert aliases[15] == [10]
+    assert aliases[20] == [15]
+
+
+def test_swept_floors_are_not_aliased():
+    """The floors actually used resolve one distinct interval each, so the
+    max_pressure oscillation is a real non-monotonic response and not an
+    artefact of sampling the curve too sparsely."""
+    floors = [5, 10, 15, 20, 25, 30, 45, 60, 75, 90]
+    aliases = cs.floor_aliases(floors)
+    assert all(len(v) == 1 for v in aliases.values()), aliases
+
+
+def test_report_labels_the_effective_switching_interval(two_scenarios, capsys):
+    cs.report(two_scenarios)
+    out = capsys.readouterr().out
+    assert "switching interval" in out
+    assert re.search(r"mg\s+5\s*->\s*10s", out), out
+    assert re.search(r"mg\s+15\s*->\s*20s", out), out
+
+
 def test_report_warns_when_completion_diverges(capsys):
     cs.report(_completion_frame({5: 3000, 15: 2400}, {5: 2990, 15: 2990}))
     out = capsys.readouterr().out

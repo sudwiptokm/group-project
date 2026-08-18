@@ -344,6 +344,13 @@ SCENARIO_ROUTES = {
 # SCENARIO_ROUTES cannot reach some drivers and not others.
 CORRIDOR_SCENARIOS = tuple(k for k in SCENARIO_ROUTES if k.startswith("corridor_"))
 
+# Decision interval and yellow duration the corridor env is built with. Named
+# because they are not just env settings: together with min_green they fix the
+# soonest a signal may switch, which is the green_wave plan's phase duration and
+# the resolution limit of the floor sweep (see corridor_control.plan_phase_seconds).
+CORRIDOR_DELTA_TIME = 5
+CORRIDOR_YELLOW_TIME = 3
+
 
 class SafetyLoggingEnv(SumoEnvironment):
     """SumoEnvironment that also records the raw safety sub-terms each step.
@@ -454,8 +461,8 @@ def make_corridor_env(seed: int, scenario: str = "corridor_offpeak",
         observation_class=PCUObservationFunction,
         use_gui=gui,
         num_seconds=int(os.environ.get("EPISODE_SECONDS", "3600")),
-        delta_time=5,
-        yellow_time=3,
+        delta_time=CORRIDOR_DELTA_TIME,
+        yellow_time=CORRIDOR_YELLOW_TIME,
         min_green=min_green,
         max_green=60,
         reward_fn=make_safety_reward_fn(lam),
