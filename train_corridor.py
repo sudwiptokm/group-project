@@ -42,10 +42,12 @@ def _obs_act_dims(env):
     return env.observation_spaces(tid).shape[0], env.action_spaces(tid).n
 
 
-def _tag(scenario: str, lam: float, seed: int) -> str:
+def _tag(scenario: str, lam: float, seed: int, min_green: int) -> str:
     """Filename tag shared by train (model) and evaluate (eval CSV) so the two
-    never diverge; must match compare.py's `eval_ippo_<scenario>_lam<lam>_seed*` glob."""
-    return f"{scenario}_lam{str(lam).replace('.', '')}_seed{seed}"
+    never diverge. min_green is folded in (env_common's own eval_csv_stem/
+    model_path convention) because a checkpoint or eval CSV is FOR one floor;
+    two floors trained on the same scenario/lam/seed must not collide."""
+    return f"{scenario}_lam{str(lam).replace('.', '')}_seed{seed}_mg{min_green}"
 
 
 def collect_rollout(env, policy, obs, n_steps):
@@ -125,11 +127,11 @@ def update(policy, optim, per, hp, last_obs):
     return last_info
 
 
-def train(scenario: str, lam: float, seed: int, steps: int) -> str:
+def train(scenario: str, lam: float, seed: int, steps: int, min_green: int) -> str:
     hp = _hp()
     torch.manual_seed(seed)
     np.random.seed(seed)
-    env = make_corridor_env(seed=seed, scenario=scenario, lam=lam)
+    env = make_corridor_env(seed=seed, scenario=scenario, lam=lam, min_green=min_green)
     obs_dim, act_dim = _obs_act_dims(env)
     policy = pc.ActorCritic(obs_dim, act_dim, hidden=hp["hidden"])
     optim = torch.optim.Adam(policy.parameters(), lr=hp["lr"])
@@ -143,7 +145,7 @@ def train(scenario: str, lam: float, seed: int, steps: int) -> str:
     env.close()
 
     os.makedirs("models", exist_ok=True)
-    path = f"models/ippo_{_tag(scenario, lam, seed)}.pt"
+    path = f"models/ippo_{_tag(scenario, lam, seed, min_green)}.pt"
     # store the architecture alongside the weights so evaluate() rebuilds the exact
     # net even if cloud_params/ppo.json (gitignored) later changes.
     torch.save({"state_dict": policy.state_dict(), "hidden": hp["hidden"]}, path)
@@ -151,13 +153,16 @@ def train(scenario: str, lam: float, seed: int, steps: int) -> str:
     return path
 
 
-def evaluate(model_path: str, scenario: str, lam: float, seed: int) -> str:
+def evaluate(model_path: str, scenario: str, lam: float, seed: int, min_green: int,
+             tripinfo: bool = False) -> str:
     """Run the trained shared policy greedily on a held-out seed, writing an eval
-    CSV in the SafetyLoggingEnv format so compare.py reads it as `ippo`."""
+    CSV in the SafetyLoggingEnv format so compare.py reads it as `ippo`. With
+    tripinfo=True also writes the per-trip XML analysis/ippo_sweep.py reduces."""
     os.makedirs("logs", exist_ok=True)
-    tag = _tag(scenario, lam, seed)
+    tag = _tag(scenario, lam, seed, min_green)
     out_csv = f"logs/eval_ippo_{tag}"
-    env = make_corridor_env(seed=seed, scenario=scenario, lam=lam, out_csv=out_csv)
+    env = make_corridor_env(seed=seed, scenario=scenario, lam=lam,
+                            min_green=min_green, out_csv=out_csv, tripinfo=tripinfo)
     obs_dim, act_dim = _obs_act_dims(env)
     # checkpoints save {"state_dict", "hidden"}; tolerate a bare state_dict too
     ckpt = torch.load(model_path, weights_only=True)
@@ -191,14 +196,19 @@ if __name__ == "__main__":
         raise SystemExit("SUMO_HOME not set")
     p = argparse.ArgumentParser()
     p.add_argument("--scenario", default="corridor_offpeak",
-                   choices=["corridor_peak", "corridor_offpeak"])
+                   choices=["corridor_peak", "corridor_offpeak", "corridor_tidal"])
     p.add_argument("--lam", type=float, default=0.5)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--steps", type=int, default=100_000)
+    p.add_argument("--min-green", type=int, required=True,
+                   help="explicit -- this script never falls back to $MIN_GREEN/DEFAULT_MIN_GREEN")
     p.add_argument("--eval", type=str, default=None,
                    help="path to a saved model to evaluate instead of training")
+    p.add_argument("--tripinfo", action="store_true",
+                   help="also write the per-trip XML (only meaningful with --eval)")
     args = p.parse_args()
     if args.eval:
-        evaluate(args.eval, args.scenario, args.lam, args.seed)
+        evaluate(args.eval, args.scenario, args.lam, args.seed, args.min_green,
+                 tripinfo=args.tripinfo)
     else:
-        train(args.scenario, args.lam, args.seed, args.steps)
+        train(args.scenario, args.lam, args.seed, args.steps, args.min_green)
