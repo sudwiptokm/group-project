@@ -6,7 +6,6 @@ then transitions are concatenated across agents for the shared update. Same
 actor/critic loop SP3's MAPPO will extend (critic input only).
 """
 import argparse
-import json
 import os
 
 import numpy as np
@@ -15,24 +14,27 @@ import torch
 import ppo_core as pc
 from env_common import make_corridor_env
 
-PARAMS_FILE = "cloud_params/ppo.json"
+# Reused single-intersection PPO hyperparameters (disclosed limitation, see
+# docs/superpowers/plans/2026-08-02-sp2-independent-marl.md header). These came
+# from a cloud tuning run whose params/ directory was scp'd to cloud_params/
+# (docs/AWS_CLOUD_GUIDE.md); that directory is gitignored and does not exist on
+# a local-only checkout, so the exact values are inlined here rather than read
+# from a file that would silently vanish on a fresh clone.
+_HP = {
+    "lr": 2.3195e-05,
+    "n_steps": 128,
+    "batch_size": 32,
+    "n_epochs": 10,
+    "gamma": 0.95,
+    "gae_lambda": 0.9525,
+    "clip_range": 0.1,
+    "ent_coef": 0.0081,
+    "hidden": (256, 256),
+}
 
 
 def _hp() -> dict:
-    """Reused single-intersection PPO hyperparameters (disclosed limitation)."""
-    with open(PARAMS_FILE) as fh:
-        p = json.load(fh)
-    return {
-        "lr": p["learning_rate"],
-        "n_steps": p["n_steps"],
-        "batch_size": p["batch_size"],
-        "n_epochs": p["n_epochs"],
-        "gamma": p["gamma"],
-        "gae_lambda": p["gae_lambda"],
-        "clip_range": p["clip_range"],
-        "ent_coef": p["ent_coef"],
-        "hidden": tuple(p["net_arch"]),
-    }
+    return dict(_HP)
 
 
 def _obs_act_dims(env):
