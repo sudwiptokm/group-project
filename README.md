@@ -299,8 +299,18 @@ delays on this scenario.
 
 Two coordinated controllers are available via `corridor_baseline.py`:
 
-- `green_wave` — fixed-time phases with coordinated progression offsets
+- `green_wave` — a real fixed-time plan: each signal holds a phase for a fixed duration
+  and the whole cycle is shifted by the free-flow travel time from the upstream signal, so
+  a platoon released upstream meets the same phase downstream
 - `max_pressure` — decentralised pressure-based switching (no coordination)
+
+Until 2026-08-18 `green_wave` was neither fixed-time nor a plan: it alternated its
+requested phase every decision step and let sumo-rl's `min_green` blocking decide the
+switching times. Its green duration was an artefact of that blocking (measured 15, 15, 25,
+25, 35, 35 s for floors 5/10/15/20/25/30 — adjacent floors collapsing onto identical
+plans), and the progression offsets were re-timed out of existence. Numbers measured
+against it are archived as `analysis/corridor_sweep_greenwave_nonplan_superseded.csv` and
+must not be compared with the current table.
 
 ```bash
 python corridor_baseline.py --scenario corridor_peak --controller green_wave --seed 0
@@ -312,15 +322,21 @@ Running `python compare.py` afterwards includes a row per corridor scenario alon
 single-intersection comparison table.
 
 Neither baseline means anything until its action-space floor is swept — for `green_wave`
-the floor *is* the green duration, since it requests a phase change every decision step.
-`analysis/corridor_sweep.py` does that sweep and is resumable (an existing tripinfo file
-is reused, so it can be re-invoked until complete):
+the floor sets the plan's phase duration, and for `max_pressure` it is a genuine limit on
+how fast it may respond. `analysis/corridor_sweep.py` does that sweep and is resumable (an
+existing tripinfo file is reused, so it can be re-invoked until complete):
 
 ```bash
 python analysis/corridor_sweep.py --scenario corridor_tidal \
   --seeds 42 43 44 45 46 47 48 49 50 51 --min-greens 5 10 15 20 25 30 45 60 75 90
 python analysis/corridor_sweep.py --report-only     # re-print from analysis/corridor_sweep.csv
 ```
+
+The floor label is not what the signal acts on. A change is honoured at the first decision
+step at or after `min_green + yellow_time`, so floors 5/10/15/20/25/30 are really switching
+intervals of 10/15/20/25/30/35 s, and floors between them (12, say) collapse onto an
+interval already sampled. The report prints that mapping and flags any aliased floors — so
+a non-monotonic floor curve can be read as a real response rather than as sparse sampling.
 
 ### Multi-agent env
 
