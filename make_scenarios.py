@@ -59,6 +59,29 @@ per COMPLETED trip becomes survivorship-biased -- the metric defect this project
 withdrew a headline over. analysis/corridor_sweep.py therefore reports
 completion counts per cell and flags floors where the controllers complete
 materially different numbers of trips. Read that flag before comparing delays.
+
+THE SKEW SCENARIO
+------------------
+`corridor_control.plan_phase_seconds`/`fixed_time_phase` compute ONE global
+phase duration and apply it, identically, at every signal on the corridor.
+Offsets vary per node (that's the whole mechanism of a green wave), but the
+through/cross SPLIT is one number shared by C1, C2 and C3. A fixed-time plan
+is therefore structurally unable to give one node more cross-street green
+than another -- it can only shift when the shared split happens to land at
+each node, not change its shape locally.
+
+`corridor_skew` is built to expose exactly that ceiling. It is stationary and
+symmetric on the arterial (byte-identical to corridor_peak's eb/wb flows: no
+tidal reversal, nothing for offsets to chase), so the only thing under test
+is the cross-street split. The cross-street total is held at corridor_peak's
+900 veh/h -- same amount of cross traffic as peak, none added -- but moved
+unevenly across nodes: C1 = 150, C2 = 600, C3 = 150 veh/h. A controller that
+can only pick one split for all three nodes must either starve C2's cross
+street or over-serve C1/C3's; max_pressure (reactive, decides per node) and
+IPPO (learned, stay-vs-switch per node per step) can both allocate green
+locally where a fixed plan cannot. Because the arterial is unchanged from
+corridor_peak, any gap that opens up is attributable to the cross-street
+skew and not to a second confound stacked on top of it.
 """
 import re
 
@@ -74,6 +97,24 @@ CORRIDOR_FACTORS = {
 CORRIDOR_TIDAL_DST = "corridor_tidal.rou.xml"
 EPISODE_SECONDS = 3600.0
 TIDAL_SWITCH_S = 1800.0
+
+CORRIDOR_SKEW_DST = "corridor_skew.rou.xml"
+
+# Per-flow multiplier on the corridor base rates (corridor.rou.xml, pre-scaling).
+# The arterial keeps corridor_peak's 1.5x -- byte-identical arterial demand, so
+# a skew-vs-peak gap is attributable to the cross-street redistribution alone.
+# The cross-street multipliers redistribute corridor_peak's 900 veh/h total
+# (3 x 200 base x 1.5 = 300 each) as C1=150, C2=600, C3=150 veh/h:
+#   f_x1: 200 * 0.75 = 150   f_x2: 200 * 3.0 = 600   f_x3: 200 * 0.75 = 150
+# Unlisted flow ids raise: a new flow in corridor.rou.xml must be assigned a
+# rate deliberately, not defaulted into one (same discipline as TIDAL_PROFILE).
+SKEW_PROFILE = {
+    "f_eb": 1.5,
+    "f_wb": 1.5,
+    "f_x1": 0.75,
+    "f_x2": 3.0,
+    "f_x3": 0.75,
+}
 
 # Per-flow (first half, second half) multipliers on the corridor base rates.
 # Arterial flows swap; cross streets stay at the peak rate throughout, so the
@@ -173,9 +214,45 @@ def write_tidal(src: str, dst: str) -> None:
     print(f"wrote {dst} (tidal, switch at {TIDAL_SWITCH_S:g}s, stochastic arrivals)")
 
 
+def write_skew(src: str, dst: str) -> None:
+    """Emit the skew corridor scenario: cross-street demand is redistributed
+    unevenly across nodes while the arterial stays at corridor_peak's rate.
+
+    Unlike write_tidal, no flow needs a time split -- every flow in
+    SKEW_PROFILE keeps a single multiplier for the whole episode, so each
+    input <flow> maps to exactly one output <flow>, in source order. Arrivals
+    are exponential for the same reason the other corridor scenarios' are --
+    see the module docstring. The flows are rewritten in place as one block,
+    which assumes they are contiguous in `src`; they are in corridor.rou.xml.
+    """
+    with open(src) as fh:
+        text = fh.read()
+
+    matches = list(_FLOW_EL.finditer(text))
+    if not matches:
+        raise ValueError(f"{src} contains no <flow> elements")
+
+    elements = []
+    for m in matches:
+        indent, raw = m.group(1), m.group(2)
+        attrs = dict(_ATTR.findall(raw))
+        flow_id = attrs["id"]
+        mult = SKEW_PROFILE[flow_id]                # unlisted id -> KeyError
+        base = float(attrs["vehsPerHour"])
+        elements.append(_flow_el(indent, attrs, flow_id, base * mult,
+                                  0.0, EPISODE_SECONDS))
+
+    body = "\n".join(elements)
+
+    with open(dst, "w") as fh:
+        fh.write(text[:matches[0].start()] + body + text[matches[-1].end():])
+    print(f"wrote {dst} (skew, stochastic arrivals)")
+
+
 if __name__ == "__main__":
     for dst, factor in FACTORS.items():
         scale_file(SRC, dst, factor)
     for dst, factor in CORRIDOR_FACTORS.items():
         scale_file(CORRIDOR_SRC, dst, factor, stochastic=True)
     write_tidal(CORRIDOR_SRC, CORRIDOR_TIDAL_DST)
+    write_skew(CORRIDOR_SRC, CORRIDOR_SKEW_DST)
