@@ -26,10 +26,12 @@ import json
 import os
 import sys
 
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
 
 from algos import ALGOS, build
-from env_common import make_env
+from env_common import (DEFAULT_MIN_GREEN, eval_csv_stem, make_env, model_path,
+                        remaining_steps, resolve_min_green)
 
 PARAMS_DIR = "params"
 
@@ -39,12 +41,18 @@ def _tag(scenario: str, lam: float) -> str:
     return f"{scenario}_lam{str(lam).replace('.', '')}"
 
 
-def load_params(algo: str, use_defaults: bool, scenario: str = None) -> dict:
+def load_params(algo: str, use_defaults: bool, scenario: str = None,
+                min_green: int = None) -> dict:
     """Tuned params if present (and not overridden), else defaults.
 
     Prefers the scenario-specific file params/<algo>_<scenario>.json (HPs tuned on
     one demand regime don't transfer — see tune.py), falling back to the legacy
     scenario-agnostic params/<algo>.json for backward compatibility.
+
+    `min_green` is only used to check the params against the floor they were
+    selected at: a params file carries no visible mark of its action space, so
+    training a 60 s floor on 10 s-tuned params looks exactly like training on
+    the right ones. That confound is what the peak retrain exists to remove.
     """
     if not use_defaults:
         candidates = []
@@ -57,15 +65,38 @@ def load_params(algo: str, use_defaults: bool, scenario: str = None) -> dict:
                 with open(path) as f:
                     saved = json.load(f)
                 print(f"[{algo}] using tuned hyperparameters from {path}")
+                _warn_floor_mismatch(algo, path, saved, min_green)
                 # net_arch is stored as a name key by tune.py -> rebuild policy_kwargs
                 return _materialise(saved)
     print(f"[{algo}] using default hyperparameters")
     return ALGOS[algo]["defaults"]()
 
 
+def _warn_floor_mismatch(algo: str, path: str, saved: dict, min_green: int) -> None:
+    """Shout when the params were tuned against a different action space.
+
+    Untagged files predate the provenance keys and were all tuned at the 10 s
+    floor the actuated probe showed is unwinnable, so they warn too.
+    """
+    if min_green is None:
+        return
+    tuned_at = saved.get("_min_green")
+    if tuned_at == min_green:
+        return
+    at = "an unrecorded floor (pre-provenance file — assume 10)" \
+        if tuned_at is None else f"min_green={tuned_at}"
+    print(f"[{algo}] WARNING: {path} was tuned at {at} but this run uses "
+          f"min_green={min_green}. Hyperparameters are selected for an action "
+          f"space; re-run tune.py --min-green {min_green} or pass --defaults.")
+
+
 def _materialise(saved: dict) -> dict:
-    """Convert a saved param dict (net_arch as list) back into cls kwargs."""
-    params = dict(saved)
+    """Convert a saved param dict (net_arch as list) back into cls kwargs.
+
+    Underscore-prefixed keys are tune.py provenance (_min_green, _tune_steps,
+    ...), not constructor arguments — drop them or the algorithm rejects them.
+    """
+    params = {k: v for k, v in saved.items() if not k.startswith("_")}
     net_arch = params.pop("net_arch", None)
     if net_arch is not None:
         params["policy_kwargs"] = dict(net_arch=net_arch)
@@ -73,32 +104,84 @@ def _materialise(saved: dict) -> dict:
 
 
 # ----------------------------------------------------------------------------
+class _PeriodicCheckpoint(BaseCallback):
+    """Write the checkpoint mid-run so a kill costs minutes, not the whole run.
+
+    SB3 only persists when learn() returns. Long runs on this machine are
+    terminated at ~53 minutes, and a 30k-step PPO run needs ~68, so without
+    this a run can never finish and leaves nothing behind when it dies -- one
+    kill discarded 34 of 42 completed episodes.
+    """
+
+    def __init__(self, path: str, every: int):
+        super().__init__()
+        self.path, self.every = path, every
+        self._last = 0
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps - self._last >= self.every:
+            self._last = self.num_timesteps
+            self.model.save(self.path)
+        return True
+
+
 def train(algo: str, steps: int, seed: int, use_defaults: bool,
-          scenario: str = "base", lam: float = 0.0):
+          scenario: str = "base", lam: float = 0.0, min_green: int = None,
+          resume: bool = False, checkpoint_every: int = 2000):
     os.makedirs("models", exist_ok=True)
     os.makedirs("logs", exist_ok=True)
 
     tag = _tag(scenario, lam)
+    min_green = resolve_min_green(min_green)
+    path = model_path(algo, tag, seed, min_green)
+
     env = make_env(seed=seed, scenario=scenario, lam=lam, gui=False,
-                   out_csv=f"logs/{algo}_{tag}_seed{seed}")
+                   out_csv=f"logs/{algo}_{tag}_seed{seed}_mg{min_green}",
+                   min_green=min_green)
     env = Monitor(env)
 
-    params = load_params(algo, use_defaults, scenario=scenario)
-    model = build(algo, env, params, seed=seed, tb_log="logs/tb")
-    model.learn(total_timesteps=steps, progress_bar=True)
+    if resume and os.path.exists(path):
+        model = ALGOS[algo]["cls"].load(path, env=env)
+        todo = remaining_steps(steps, model.num_timesteps)
+        if not todo:
+            env.close()
+            print(f"{path} already has {model.num_timesteps}/{steps} steps — done")
+            return
+        print(f"resuming {path} at {model.num_timesteps}/{steps} steps")
+    else:
+        params = load_params(algo, use_defaults, scenario=scenario,
+                             min_green=min_green)
+        model = build(algo, env, params, seed=seed, tb_log="logs/tb")
+        todo = steps
 
-    path = f"models/{algo}_{tag}_seed{seed}.zip"
+    # reset_num_timesteps=False so the budget is counted across resumes: three
+    # resumed chunks of a 30k run must train 30k, not 90k, or this arm is
+    # compared against arms that got less.
+    model.learn(total_timesteps=todo, progress_bar=True,
+                reset_num_timesteps=not resume,
+                callback=_PeriodicCheckpoint(path, checkpoint_every))
+
     model.save(path)
     env.close()
-    print(f"saved {path}")
+    print(f"saved {path} at {model.num_timesteps} steps")
 
 
-def evaluate(algo: str, model_path: str, seed: int, gui: bool,
-             scenario: str = "base", lam: float = 0.0):
+def evaluate(algo: str, model_file: str, seed: int, gui: bool,
+             scenario: str = "base", lam: float = 0.0, train_seed: int = None,
+             min_green: int = None):
     tag = _tag(scenario, lam)
-    env = make_env(seed=seed, scenario=scenario, lam=lam, gui=gui,
-                   out_csv=f"logs/eval_{algo}_{tag}_seed{seed}")
-    model = ALGOS[algo]["cls"].load(model_path)
+    # `seed` is the DEMAND seed; train_seed names the checkpoint; min_green names
+    # the action space. All three go in the filename, after "seed<n>" so
+    # compare.py's eval_<algo>_<tag>_seed*.csv glob still hits -- see
+    # env_common.eval_csv_stem for why each one has to be there.
+    min_green = resolve_min_green(min_green)
+    stem = eval_csv_stem(algo, tag, seed, train_seed=train_seed,
+                         min_green=min_green)
+    # tripinfo on: evaluation is the one place completed-trip delay/throughput
+    # is needed, and it is a single episode so nothing overwrites it
+    env = make_env(seed=seed, scenario=scenario, lam=lam, gui=gui, out_csv=stem,
+                   tripinfo=True, min_green=min_green)
+    model = ALGOS[algo]["cls"].load(model_file)
     obs, _ = env.reset()
     done = False
     total_r = 0.0
@@ -111,7 +194,7 @@ def evaluate(algo: str, model_path: str, seed: int, gui: bool,
     # never gets one, so save it explicitly before closing the connection.
     env.save_csv(env.out_csv_name, env.episode)
     env.close()
-    csv = f"logs/eval_{algo}_{tag}_seed{seed}_conn{env.label}_ep{env.episode}.csv"
+    csv = f"{stem}_conn{env.label}_ep{env.episode}.csv"
     print(f"eval {algo} seed={seed} total_reward={total_r:.1f}  (metrics -> {csv})")
 
 
@@ -130,11 +213,29 @@ if __name__ == "__main__":
                    help="ignore params/<algo>.json, force default hyperparameters")
     p.add_argument("--scenario", default="base", choices=["base", "peak", "offpeak"])
     p.add_argument("--lam", type=float, default=0.0, help="safety-reward weight")
+    p.add_argument("--train-seed", type=int, default=None,
+                   help="seed the evaluated checkpoint was trained with; tags the "
+                        "eval CSV so several checkpoints can share a demand seed")
+    p.add_argument("--min-green", type=int, default=None,
+                   help=f"shortest green before a switch is honoured, in seconds "
+                        f"(default {DEFAULT_MIN_GREEN}, or $MIN_GREEN). This is "
+                        "the action space, not a tuning detail: at 10 s even a "
+                        "non-learning controller is 5.6x worse than a fixed plan "
+                        "— see docs/FINDINGS_2026-08-12.md")
+    p.add_argument("--resume", action="store_true",
+                   help="continue from the checkpoint on disk if there is one, "
+                        "counting --steps as the TOTAL budget across resumes. "
+                        "Exits immediately if it is already complete")
+    p.add_argument("--checkpoint-every", type=int, default=2000,
+                   help="save mid-run every N steps (default 2000), so a killed "
+                        "run leaves progress behind rather than nothing")
     args = p.parse_args()
 
     if args.eval:
         evaluate(args.algo, args.eval, seed=args.seed, gui=args.gui,
-                 scenario=args.scenario, lam=args.lam)
+                 scenario=args.scenario, lam=args.lam, train_seed=args.train_seed,
+                 min_green=args.min_green)
     else:
         train(args.algo, steps=args.steps, seed=args.seed, use_defaults=args.defaults,
-              scenario=args.scenario, lam=args.lam)
+              scenario=args.scenario, lam=args.lam, min_green=args.min_green,
+              resume=args.resume, checkpoint_every=args.checkpoint_every)
