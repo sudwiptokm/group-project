@@ -30,7 +30,7 @@ Calendar says mid–**Sprint 5** (Experiments & Tuning). Reality: Sprints 1–4 
 - [x] Heterogeneous vehicles + sublane model (`vtypes.add.xml`, 60/25/15 moto/auto/car, `--lateral-resolution 0.5`)
 - [x] Calibrate demand (flows in `traffic.rou.xml`) — **single profile only**; peak/off-peak split not done
 - [x] Fixed-time baseline controller (`intersection.sumocfg`, `tripinfo.xml` written)
-- [ ] 🟡 Validate baseline & **record baseline metrics in comparable form** — `tripinfo.xml` exists but not reduced to avg-delay/queue/throughput row usable against RL
+- [x] Validate baseline & **record baseline metrics in comparable form** — evaluation writes `tripinfo` per run (`make_env(tripinfo=True)`), `analysis/tripinfo.py` reduces it to delay/throughput/completion, and `compare.py` ranks every algorithm and the baseline on it. The baseline is now a swept static plan (`baseline.py --green`), not the 10 s cycler it used to be
 
 ## Sprint 3 — RL Controller Design (M3, 5 Jul) ✅
 

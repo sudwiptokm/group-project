@@ -61,7 +61,8 @@ brake_term    = Σ v(type)  over vehicles with acceleration < −B_THRESH
 exposure_term = Σ v(type)  over vehicles on internal junction lanes
                 while the current phase is yellow / clearing
 
-safety(step)  = brake_term + exposure_term      (equal weight, no extra knob)
+safety(step)  = Σ over each simulation second of the decision window
+                (brake_term + exposure_term)     (equal weight, no extra knob)
 ```
 
 - `brake_term` read via traci `vehicle.getAcceleration` for vehicles on the
@@ -70,6 +71,14 @@ safety(step)  = brake_term + exposure_term      (equal weight, no extra knob)
   yellow/clearing phase — vehicles caught mid-intersection at a phase switch.
 - Both sub-terms are vulnerability-weighted and summed with equal weight to avoid
   introducing another free parameter.
+- **Sampling (revised — see §9):** both sub-terms are accumulated on *every*
+  simulation second inside the decision window, not sampled once at the action
+  step. sumo-rl evaluates the reward only after `_run_steps()` has advanced
+  `delta_time` seconds, by which point `is_yellow` is always False again
+  (sumo-rl asserts `delta_time > yellow_time`), so an action-step sample can
+  never observe exposure at all and sees braking only on the settled
+  post-yellow second. `_SafetyWindow` in `env_common.py` owns the accumulation;
+  the reward and the logged metrics read the same totals.
 
 ## 4. Reward Combination
 
@@ -84,9 +93,14 @@ reward(step) = diff_waiting_time  −  λ · (safety / SAFETY_SCALE)
   so the two are of comparable magnitude. Then **lock and document** the value. This makes
   λ ≈ 1 a meaningful "equal emphasis" point rather than an arbitrary multiplier.
   **Calibrated value (peak scenario, seed 0, via `calibrate_probe.py`):**
-  `mean|diff_waiting_time| = 8.44`, `mean_safety = 0.206` →
-  **`SAFETY_SCALE = 0.206 / 8.44 ≈ 0.024`** (locked in `env_common.py`). At λ=1 the
-  scaled safety term `safety / 0.024` then has mean magnitude ≈ 8.44, matching efficiency.
+  `mean|diff_waiting_time| = 8.44`, `mean_safety = 17.97` →
+  **`SAFETY_SCALE = 17.97 / 8.44 ≈ 2.1298`** (locked in `env_common.py`). At λ=1 the
+  scaled safety term `safety / 2.1298` then has mean magnitude ≈ 8.44, matching efficiency.
+  **Superseded value: `0.024`** (`mean_safety = 0.206`). That calibration was measured
+  against the action-step sampling described in §3, i.e. against a signal that never
+  saw yellow and caught roughly one braking second in five. Stage-1 runs were trained
+  under it and are not comparable to post-fix runs; λ=0 runs are unaffected, since the
+  safety term short-circuits before it is computed.
 - **λ is the invariant per stage.** At a given λ, every algorithm sees the identical
   reward function; fairness preserved. λ becomes an experiment axis only in Stage 2.
 
@@ -163,5 +177,17 @@ For each algo in {dqn, qrdqn, ppo, a2c}:
 - **`SAFETY_SCALE` calibration** is a judgement call — must be recorded and justified.
 - **exposure_term implementation** depends on how sumo-rl exposes the yellow/clearing
   phase and internal-lane vehicle lists via traci; verify the accessor during build.
+  **Realised.** The accessors (`ts.is_yellow`, `getControlledLinks` via-lanes,
+  `lane.getLastStepVehicleIDs`) were all correct, but the *timing* was not: rewards
+  and info are computed only after the decision window has elapsed, when `is_yellow`
+  has already been cleared, so `system_safety_exposure` was exactly 0.0 with std 0.0
+  in every Stage-1 row — all four algorithms and the fixed-time baseline. Fixed by
+  accumulating per simulation second (§3); after the fix, peak/seed0 gives
+  `safety_brake` 0.206 → 5.07 and `safety_exposure` 0.0 → 11.57.
+- **Exposure now dominates braking** (11.57 vs 5.07 at peak), because it counts every
+  vehicle on an internal lane on every yellow second and so scales with junction
+  occupancy. λ therefore weights "clear the junction before yellow" more than "do not
+  brake hard". Defensible, but it is a modelling choice that must be stated before the
+  Stage-2 λ sweep is interpreted.
 - **B_THRESH = 4.5 m/s²** and vulnerability weights (1.0/0.6/0.3) are defensible defaults;
   cite/justify in the report.

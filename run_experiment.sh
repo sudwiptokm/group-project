@@ -56,6 +56,16 @@ TUNE_EVAL_SEEDS="${TUNE_EVAL_SEEDS:-42 43}"
 EPISODE_SECONDS="${EPISODE_SECONDS:-$_EPISODE}"  # sim-seconds per episode
 export EPISODE_SECONDS                 # consumed by env_common.make_env
 
+# Action-space floor for every tuning/training/eval run in this grid. Set once
+# here so tuning and training cannot disagree -- params selected against one
+# floor are not the right params for another. The default lives in
+# env_common.DEFAULT_MIN_GREEN (60 s) and is measured, not chosen: at a 10 s
+# floor even a non-learning queue-actuated controller is 5.6x worse than a
+# fixed plan (analysis/actuated.py, docs/FINDINGS_2026-08-12.md). Every peak
+# result before 2026-08-13 was produced at 10 s.
+MIN_GREEN="${MIN_GREEN:-60}"
+export MIN_GREEN                       # consumed by env_common.make_env
+
 SKIP_TUNE=0
 SKIP_TRAIN=0
 SKIP_EVAL=0
@@ -131,7 +141,8 @@ fi
 if [ "$SKIP_EVAL" -eq 0 ]; then
     for scenario in $SCENARIOS; do
         # Fixed-time baseline: once per scenario, resumable.
-        # baseline.py writes: logs/eval_fixedtime_<scenario>_seed0_conn<N>_ep<M>.csv
+        # baseline.py writes: logs/eval_fixedtime_<scenario>_seed0_g<green>_conn<N>_ep<M>.csv
+        # (green defaults to baseline.py's DEFAULT_GREEN = the best static plan)
         if [ "$FORCE" -eq 0 ] && ls "logs/eval_fixedtime_${scenario}_seed0"*.csv >/dev/null 2>&1; then
             log "SKIP baseline $scenario (csv exists)"
         else
