@@ -14,6 +14,7 @@ import argparse
 import os
 import sys
 import time
+from typing import Optional
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
@@ -23,7 +24,7 @@ import pandas as pd
 
 import train_corridor as tc
 from analysis.tripinfo import reduce_tripinfo
-from env_common import tripinfo_path
+from env_common import CORRIDOR_SCENARIOS, tripinfo_path
 
 OUT_CSV = os.path.join(REPO, "analysis", "ippo_sweep.csv")
 CORRIDOR_SWEEP_CSV = os.path.join(REPO, "analysis", "corridor_sweep.csv")
@@ -35,15 +36,15 @@ def run_one(scenario: str, seed: int, min_green: int, lam: float, steps: int,
            force: bool = False) -> dict:
     """Train (if no checkpoint exists) + eval one seed, reduced to the ranking
     metric. Resumable: an existing model/tripinfo file is reused."""
-    model_path = f"models/ippo_{tc._tag(scenario, lam, seed, min_green)}.pt"
+    model_path = f"models/ippo_{tc._tag(scenario, lam, seed, min_green, steps)}.pt"
     if force or not os.path.exists(model_path):
         t0 = time.monotonic()
         tc.train(scenario, lam, seed, steps, min_green)
         took = time.monotonic() - t0
     else:
         took = float("nan")
-    tc.evaluate(model_path, scenario, lam, seed, min_green, tripinfo=True)
-    trip = tripinfo_path(f"logs/eval_ippo_{tc._tag(scenario, lam, seed, min_green)}")
+    tc.evaluate(model_path, scenario, lam, seed, min_green, steps, tripinfo=True)
+    trip = tripinfo_path(f"logs/eval_ippo_{tc._tag(scenario, lam, seed, min_green, steps)}")
     row = reduce_tripinfo(trip)
     return {
         "controller": "ippo", "scenario": scenario, "seed": seed,
@@ -87,6 +88,48 @@ def paired_vs_green_wave(ippo_df: pd.DataFrame, baseline_df: pd.DataFrame) -> di
     }
 
 
+# same survivorship-bias tolerance as corridor_sweep.COMPLETION_TOLERANCE:
+# two controllers whose completed-trip counts differ by more than this at the
+# same floor are not being ranked on the same population of vehicles
+COMPLETION_TOLERANCE = 0.02
+
+
+def completion_gap(ippo_df: pd.DataFrame, baseline_df: pd.DataFrame,
+                   tolerance: float = COMPLETION_TOLERANCE) -> Optional[dict]:
+    """Survivorship guard for the ippo/green_wave pairing -- the analogue of
+    corridor_sweep.completion_gaps for this file's controller/baseline shape.
+
+    delay_per_trip is delay per COMPLETED trip. A controller that jams an
+    approach until hundreds of vehicles never finish is scored on the
+    survivors and can look better than one that cleared everybody -- the
+    survivorship bias behind this project's withdrawn headline (see
+    corridor_sweep.completion_gaps' docstring). Both dataframes must already
+    be one (scenario, min_green), the same guard paired_vs_green_wave uses.
+
+    Returns None if mean trips completed are within `tolerance` of each
+    other, else a dict describing the spread.
+    """
+    i_scen = set(ippo_df["scenario"])
+    b_scen = set(baseline_df["scenario"])
+    if i_scen != b_scen or len(i_scen) != 1:
+        raise ValueError(f"scenario mismatch: ippo={i_scen} baseline={b_scen}")
+    trips = {
+        "ippo": float(ippo_df["trips"].mean()),
+        "green_wave": float(baseline_df["trips"].mean()),
+    }
+    hi = max(trips.values())
+    if hi <= 0:
+        return None
+    spread = (hi - min(trips.values())) / hi
+    if spread <= tolerance:
+        return None
+    return {
+        "scenario": ippo_df["scenario"].iloc[0],
+        "spread": spread,
+        "trips": trips,
+    }
+
+
 def load_green_wave_bar(scenario: str, min_green: int) -> pd.DataFrame:
     """green_wave rows already in analysis/corridor_sweep.csv for this
     (scenario, min_green) -- the bar this sweep pairs IPPO against."""
@@ -98,7 +141,7 @@ def load_green_wave_bar(scenario: str, min_green: int) -> pd.DataFrame:
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--scenario", required=True,
-                   choices=["corridor_peak", "corridor_offpeak", "corridor_tidal"])
+                   choices=list(CORRIDOR_SCENARIOS))
     p.add_argument("--min-green", type=int, required=True)
     p.add_argument("--lam", type=float, default=0.5)
     p.add_argument("--steps", type=int, default=100_000)
@@ -127,3 +170,12 @@ if __name__ == "__main__":
         print(f"\nippo - green_wave, {args.scenario} mg{args.min_green}: "
               f"{result['mean']:+.2f} +/- {result['sd']:.2f} s, "
               f"ippo wins {result['wins']}/{result['n']}")
+
+        gap = completion_gap(this_run, bar)
+        if gap is not None:
+            counts = "  ".join(f"{c}={n:.0f}" for c, n in gap["trips"].items())
+            print(f"\n!!! survivorship warning: ippo and green_wave completed "
+                  f"different numbers of trips at this floor.")
+            print(f"    delay per COMPLETED trip favours whoever finished fewer "
+                  f"of them.")
+            print(f"    {gap['spread'] * 100:.1f}% spread   {counts}")

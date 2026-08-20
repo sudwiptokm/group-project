@@ -14,7 +14,7 @@ def test_ippo_trains_and_evaluates(monkeypatch):
     model = tc.train("corridor_offpeak", lam=0.5, seed=0, steps=600, min_green=10)
     assert os.path.exists(model)
 
-    csv = tc.evaluate(model, "corridor_offpeak", lam=0.5, seed=42, min_green=10)
+    csv = tc.evaluate(model, "corridor_offpeak", lam=0.5, seed=42, min_green=10, steps=600)
     assert os.path.exists(csv)
     import pandas as pd
     df = pd.read_csv(csv)
@@ -35,17 +35,19 @@ def test_ippo_learns_vs_untrained(monkeypatch, tmp_path):
     import env_common as ec
 
     # 1) save an UNTRAINED (random-init) policy and eval it
-    env = ec.make_corridor_env(seed=0, scenario="corridor_offpeak", lam=0.5)
+    env = ec.make_corridor_env(seed=0, scenario="corridor_offpeak", lam=0.5, min_green=10)
     obs_dim, act_dim = tc._obs_act_dims(env)
     env.close()
     untrained = pc.ActorCritic(obs_dim, act_dim, hidden=tc._hp()["hidden"])
     u_path = str(tmp_path / "untrained.pt")
     torch.save(untrained.state_dict(), u_path)
-    u_csv = tc.evaluate(u_path, "corridor_offpeak", lam=0.5, seed=7, min_green=10)
+    # untrained model was never produced by train(), so there is no real step
+    # budget to reconstruct a tag for -- 0 flags that plainly.
+    u_csv = tc.evaluate(u_path, "corridor_offpeak", lam=0.5, seed=7, min_green=10, steps=0)
 
     # 2) train and eval on the same held-out seed
     model = tc.train("corridor_offpeak", lam=0.5, seed=0, steps=2000, min_green=10)
-    t_csv = tc.evaluate(model, "corridor_offpeak", lam=0.5, seed=7, min_green=10)
+    t_csv = tc.evaluate(model, "corridor_offpeak", lam=0.5, seed=7, min_green=10, steps=2000)
 
     # At this micro budget we only require the trained policy to stay mobile and
     # not be meaningfully WORSE than random (within 10%). Real convergence

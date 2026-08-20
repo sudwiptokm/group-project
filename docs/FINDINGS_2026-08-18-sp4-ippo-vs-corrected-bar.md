@@ -30,12 +30,23 @@ different step budgets:
 | steps | ppo_core delay/trip | SB3 PPO delay/trip | diff |
 |---|---:|---:|---:|
 | 20,000 | 28.39s | 28.51s | -0.12s |
-| 100,000 (full budget) | 28.4s | 28.5s | +0.1s |
+| 100,000 (full budget) | 28.4s | 28.5s | -0.1s |
 
 Near-parity at both scales. The hand-rolled PPO core is not the explanation
 for anything that follows — this was the top technical risk flagged in
 `docs/HANDOFF_2026-08-18.md`, and it's closed with real evidence at the
 originally-planned budget, not just the reduced-scale first pass.
+
+Caveat: this comparison is not perfectly apples-to-apples. In
+`analysis/validate_ppo_core.py`'s `__main__` block, `eval_ppo_core` scores
+ppo_core on a held-out seed (`seed + 1000`), while `train_eval_sb3` scores
+SB3 PPO on its own training seed — so SB3's number is in-sample and likely
+mildly optimistic relative to ppo_core's out-of-sample one. The true gap (if
+any) may be slightly larger than the reported ~0.1s. That asymmetry was
+judged not worth a full SB3 retrain (~50 min) to close, since it's not large
+enough to change "near-parity" as a characterization: the gap is already two
+orders of magnitude smaller than typical seed-to-seed variance seen
+elsewhere in this project (e.g. green_wave's own ±0.2-0.3s sd across seeds).
 
 ## IPPO vs green_wave, paired, min_green=10, seeds 42-51, 16,000 steps
 
@@ -45,7 +56,7 @@ originally-planned budget, not just the reduced-scale first pass.
 | corridor_tidal | 35.60s ± 3.06 | 13.96s ± 0.34 | +21.64s ± 3.15 | 0/10 |
 
 IPPO loses on every seed, on both scenarios, by a wide margin — worse even
-than `max_pressure` (19.25-19.43s at its own best floor), the reactive
+than `max_pressure` (19.43-20.19s at its own best floor), the reactive
 controller it was also supposed to beat.
 
 ## corridor_skew: does uneven cross-street demand help either controller?
@@ -63,6 +74,13 @@ learned control that can allocate green locally.
 | corridor_peak  | 13.46s (mg10) | 19.43s (mg15) | +5.97s |
 | corridor_tidal | 13.96s (mg10) | 20.19s (mg15) | +6.23s |
 | corridor_skew  | 13.45s (mg10) | 19.25s (mg15) | +5.81s |
+
+`corridor_skew`'s calibration used a narrower min_green grid than
+`corridor_peak`/`corridor_tidal`'s: 10 seeds at mg10/mg15 only, 3 seeds at
+mg20/30/45/60, missing mg5/25/75/90 entirely. The "own best" comparison
+above is still valid — mg10/mg15 bracket where the other two scenarios'
+optima land — but it rests on less evidence than the peak/tidal rows in the
+same table.
 
 Indistinguishable from peak/tidal; green_wave wins 10/10 again. The
 mechanism (uniform split can't match uneven per-node demand) is real, but
@@ -93,8 +111,11 @@ confirmatory check (`analysis/ippo_sweep_peak_100k_check.csv`):
 | **mean** | **34.36s** | **17.85s** | **13.47s** | **+4.38s** |
 
 Budget was clearly a major factor: 6.25x more steps roughly halved IPPO's
-raw delay and cut the gap to green_wave by 80% (+22.46s -> +4.38s on the
-matching seeds). But it did not close it. All 3 confirmatory seeds still
+raw delay and cut the gap to green_wave by ~79% on the matching 3-seed
+subset. That reduction is computed on the exact 16k-step numbers for seeds
+42/43/44 only (mean +20.89s — not the 10-seed-average +22.46s used
+elsewhere in this doc) versus the 100k-step mean of +4.38s on the same 3
+seeds: (20.89 - 4.38) / 20.89 ≈ 79%. But it did not close it. All 3 confirmatory seeds still
 lose to green_wave. Given the shape of that improvement (large gain from
 16k -> 100k, but landing well short of parity, not asymptoting toward it),
 further budget increases were judged unlikely to flip the result and were
@@ -107,7 +128,7 @@ doesn't answer" below.
 tested, on either scenario tried.** At the properly-sized 16,000-step
 budget the loss is enormous (+22s, worse than the reactive baseline too); at
 a 6.25x larger, validated budget (100,000 steps, matching what the
-single-intersection sanity check used) the loss shrinks by 80% but remains
+single-intersection sanity check used) the loss shrinks by ~79% but remains
 real and consistent (+4.4s, 3/3 seeds) on the one scenario re-checked.
 
 This is the negative result path 1 of `docs/HANDOFF_2026-08-18.md`
