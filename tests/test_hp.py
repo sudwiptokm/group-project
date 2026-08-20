@@ -18,8 +18,8 @@ def test_hp_has_no_file_dependency(tmp_path, monkeypatch):
 
 
 def test_tag_includes_min_green():
-    assert tc._tag("corridor_peak", 0.5, seed=0, min_green=10) == \
-        "corridor_peak_lam05_seed0_mg10"
+    assert tc._tag("corridor_peak", 0.5, seed=0, min_green=10, steps=16000) == \
+        "corridor_peak_lam05_seed0_mg10_s16000"
 
 
 def test_train_and_evaluate_require_min_green_kwarg():

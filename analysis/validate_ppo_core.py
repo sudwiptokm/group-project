@@ -8,8 +8,8 @@ this file adapts ppo_core's ActorCritic/compute_gae/ppo_loss to that API rather
 than reusing train_corridor.collect_rollout/update directly.
 
 Not a pass/fail gate: a from-scratch reimplementation is not expected to exactly
-match a mature library's sample efficiency. It reports both learning curves and
-held-out tripinfo delay so the risk this comparison exists to surface --
+match a mature library's sample efficiency. It reports held-out tripinfo delay
+and wall-clock timing for both so the risk this comparison exists to surface --
 "is ppo_core's gradient step actually equivalent to SB3's" -- has evidence
 either way before any corridor number is trusted.
 
