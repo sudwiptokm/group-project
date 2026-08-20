@@ -1,0 +1,4 @@
+controller,scenario,seed,min_green,delay_per_trip,trips,wall_s
+ippo,corridor_peak,42,10,16.91408905506459,2942,4120.969395125
+ippo,corridor_peak,43,10,18.181237904571237,2997,4244.864775833001
+ippo,corridor_peak,44,10,18.461028862478777,2945,4168.562481540999
