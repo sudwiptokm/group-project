@@ -24,15 +24,36 @@ config.
 Near-parity: -0.1s, essentially identical to the ppo_core-vs-SB3 result SP4
 found at the same matched-hyperparameter setup. The top technical risk — the
 hand-rolled DQN math being subtly wrong — did not materialize, so the
-corridor numbers below rest on a validated core.
+corridor numbers below rest on a validated core. As with
+analysis/validate_ppo_core.py's identical pattern, the two arms here are
+evaluated on different demand seeds (`seed` for SB3, `seed+1000` for
+dqn_core) — inherited, not new to this run, and worth a hedging clause since
+green_wave's own seed-to-seed spread at this floor is roughly 0.7s. (Run
+output recorded in
+`.superpowers/sdd/2026-08-21-sp5-idqn-corridor-training/progress.md`, since
+`logs/` is gitignored and not re-derivable from the checkout.)
 
 ## Throughput
 
 Measured 5.6 agent-steps/s on this machine (Task 6) — notably slower than
 the single-intersection dqn_core throughput observed in Task 2 (~22-34
-steps/s), consistent with the ~3x per-step network/buffer/optimizer overhead
-of true independence (3 separate networks/buffers/optimizers, one per
-corridor signal) versus a single shared policy. The 3-seed pilot took ~3.6h
+steps/s). That comparison isn't representative of steady-state cost, though:
+the Task 6 probe sampled only 2000 steps, still inside the epsilon-random
+warmup phase, before `learning_starts=5000` ever let a single gradient step
+happen — so it measured startup cost, not the actual per-step overhead of
+training 3 independent networks/buffers/optimizers.
+
+The real comparison is the matched-100k-budget pilot itself: idqn's 3 seeds
+took 12915.90s of total wall-clock (~3.588h) against ippo(100k)'s 12534.40s
+(~3.482h) for the same corridor, same step budget — a ratio of 1.030. IDQN
+ran about 3% slower than IPPO per env-step at the same budget, not 3x and
+not the 4-6x an earlier (also-probe-based) estimate suggested. Per-seed
+throughput is close between the two: idqn ≈ 23.7/22.5/23.5 steps/s
+(seeds 42/43/44, avg ~23.2), ippo(100k) ≈ 24.3/23.6/24.0 steps/s (avg
+~23.9). True independence — 3 separate networks, buffers, and optimizers
+instead of one shared policy — is nearly free here, because SUMO's own
+per-step simulation cost dominates wall-clock, not the extra
+network/buffer/optimizer bookkeeping. The 3-seed pilot took ~3.6h
 wall-clock — faster than the ~14.9h the Task 6 throughput probe
 extrapolated, because the 2000-step sample it was based on wasn't
 representative of steady-state per-seed cost.
@@ -42,11 +63,15 @@ representative of steady-state per-seed cost.
 | vs | idqn (mean +/- sd) | bar (mean +/- sd) | paired idqn - bar | wins |
 |---|---:|---:|---:|---:|
 | green_wave | 16.56 +/- 0.36 s | 13.47 +/- 0.04 s | +3.09 +/- 0.37 s | 0/3 |
-| ippo (100k, same 3 seeds) | 16.56 +/- 0.36 s | 34.36 +/- 2.21 s | -17.80 +/- 2.24 s | 3/3 |
+| ippo (100k, same 3 seeds) | 16.56 +/- 0.36 s | 17.85 +/- 0.82 s | -1.29 +/- 1.18 s | 2/3 |
 
-Trip counts for idqn/green_wave/ippo on these 3 seeds are all within ~0.2% of
-each other (2945-2997 range), so there's no survivorship-bias confound —
-these delay numbers are directly comparable.
+Trip counts for idqn/green_wave/ippo(100k) on these 3 seeds are all within
+~0.2% of each other per seed (seed 42: idqn 2945, green_wave 2944, ippo
+2942, 0.10% spread; seed 43: idqn 2991, green_wave 2997, ippo 2997, 0.20%
+spread; seed 44: idqn 2950, green_wave 2949, ippo 2945, 0.17% spread) — a
+true range of 2942-2997 across all three controllers and seeds. All spreads
+are tiny, so there's no survivorship-bias confound — these delay numbers are
+directly comparable.
 
 ## Decision
 
@@ -64,12 +89,16 @@ compute — a qualitative call made under the plan's own explicit latitude for
 one, not a scripted threshold, and consistent with the shape of evidence
 that led SP4 to stop short of its own full sweep too.
 
-Separately, and worth its own billing: **IDQN beats IPPO by -17.80s (3/3
-seeds, sd 2.24s)**. True independence — separate networks, buffers, and
-optimizers per agent — clearly outperforms parameter-sharing (IPPO's pooled
-single policy) on this corridor task, even though neither one clears the
-fixed-plan bar. This is exactly the mechanism SP5 was built to test (RESCO's
-own finding that IDQN outperforms IPPO), and it replicated here.
+Separately, and worth its own billing: **IDQN edges IPPO by ~1.3s on average
+at matched 100k budget (-1.29 +/- 1.18s), winning 2 of 3 seeds** — seed 42 is
+actually a loss for IDQN (idqn 16.95s vs ippo 16.91s), and seeds 43/44 are
+wins (-1.69s and -2.22s respectively). This is directionally consistent with
+RESCO's own finding that independent learners beat parameter-shared ones
+here — exactly the mechanism SP5 was built to test — but at n=3 with a
+paired sd (1.18s) close to the size of the mean effect itself (1.29s), and
+one of the three seeds landing on the wrong side of zero, this is weak
+evidence, not a decisive replication. Neither arm clears the fixed-plan bar
+either way.
 
 ## Verdict
 
@@ -85,9 +114,11 @@ flip the direction. Consolidation stands.
 
 That said, the pilot did show real, measured promise, and it's worth stating
 as the open thread for anyone who wants to spend the remaining compute
-later: IDQN cut IPPO's gap to green_wave by ~29% and beat IPPO outright by a
-wide, consistent margin (3/3 seeds). Whether the full 17-more-seed,
-2-scenario sweep — or a corridor-specific hyperparameter retune, never
-attempted here — would close the remaining ~3s gap entirely is untested and
-genuinely open. The gate stopped short of finding out, by design, not
-because the promise wasn't real.
+later: IDQN cut IPPO's gap to green_wave by ~29% and edged IPPO on average
+at matched budget (2/3 seeds, -1.29 +/- 1.18s) — a narrow, mixed lean, not a
+wide or consistent margin, but directionally the result SP5 set out to
+test. Whether the full 17-more-seed, 2-scenario sweep — or a
+corridor-specific hyperparameter retune, never attempted here — would close
+the remaining ~3s gap to green_wave entirely, or firm up the IPPO edge past
+n=3, is untested and genuinely open. The gate stopped short of finding out,
+by design, not because the promise wasn't real.
