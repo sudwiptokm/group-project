@@ -111,6 +111,11 @@ def train(scenario: str, lam: float, seed: int, steps: int, min_green: int) -> d
                     obs_t = torch.as_tensor(obs[i], dtype=torch.float32).unsqueeze(0)
                     actions[i] = int(a["q"](obs_t).argmax(dim=-1).item())
         nobs, rewards, dones, _ = env.step(actions)
+        # dones["__all__"] is True both when the episode genuinely ends and
+        # when it's truncated by the episode time limit -- either way it's
+        # stored as a terminal transition (done=1) in each agent's replay
+        # buffer, the same convention analysis/validate_dqn_core.py's
+        # train_dqn_core loop uses.
         done_all = float(dones["__all__"])
         for i in ids:
             agents[i]["buffer"].add(obs[i], actions[i], float(rewards[i]), nobs[i],
@@ -150,7 +155,7 @@ def train(scenario: str, lam: float, seed: int, steps: int, min_green: int) -> d
 
 def evaluate(scenario: str, lam: float, seed: int, min_green: int, steps: int,
             tripinfo: bool = False) -> str:
-    """Run all 3 agents' greedy policies on a held-out seed, writing one eval
+    """Run all 3 agents' greedy policies for one episode, writing one eval
     CSV in the SafetyLoggingEnv format so compare.py reads it as `idqn`. With
     tripinfo=True also writes the per-trip XML analysis/idqn_sweep.py reduces.
 

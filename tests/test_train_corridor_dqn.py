@@ -32,15 +32,21 @@ def test_idqn_trains_and_evaluates(monkeypatch):
     # directly; this proves train_corridor_dqn.train() actually reaches that
     # code path, not just that dqn_core works in isolation.
     #
-    # C1 is the first id in env.ts_ids (verified: make_corridor_env always
-    # returns ['C1', 'C2', 'C3']), so C1's q_net is the very first QNetwork
-    # train() builds, immediately after its torch.manual_seed(seed) call.
+    # tcd.CORRIDOR_TS_IDS[0] is the first id train() builds a QNetwork for
+    # (immediately after its torch.manual_seed(seed) call), so that agent's
+    # q_net is the very first QNetwork train() constructs. Assert the
+    # assumption explicitly rather than hardcoding "C1", in case
+    # CORRIDOR_TS_IDS's order ever changes.
+    assert tcd.CORRIDOR_TS_IDS[0] == "C1"
+    first_id = tcd.CORRIDOR_TS_IDS[0]
+
     # Nothing between manual_seed(seed) and that QNetwork() call touches
     # torch's global RNG (make_corridor_env doesn't import torch;
     # np.random.default_rng(seed) is an independent numpy Generator, not
     # torch's RNG). So a freshly-seeded QNetwork built the same way has
-    # IDENTICAL initial weights to C1's pre-training q_net -- any difference
-    # after loading the checkpoint proves a real gradient update happened.
+    # IDENTICAL initial weights to first_id's pre-training q_net -- any
+    # difference after loading the checkpoint proves a real gradient update
+    # happened.
     import torch
     import dqn_core as dc
     import env_common as ec
@@ -53,7 +59,7 @@ def test_idqn_trains_and_evaluates(monkeypatch):
     torch.manual_seed(seed)
     fresh = dc.QNetwork(obs_dim, act_dim, hidden=tcd._hp()["hidden"])
 
-    ckpt = torch.load(paths["C1"], weights_only=True)
+    ckpt = torch.load(paths[first_id], weights_only=True)
     trained = dc.QNetwork(obs_dim, act_dim, hidden=tuple(ckpt["hidden"]))
     trained.load_state_dict(ckpt["state_dict"])
 
@@ -61,7 +67,7 @@ def test_idqn_trains_and_evaluates(monkeypatch):
         not torch.equal(a, b)
         for a, b in zip(fresh.state_dict().values(), trained.state_dict().values())
     )
-    assert changed, ("C1's Q-network weights are unchanged from init -- "
+    assert changed, (f"{first_id}'s Q-network weights are unchanged from init -- "
                      "train() never reached dqn_loss/optimizer.step()")
 
     # evaluate() has no model_path param (unlike train_corridor.evaluate) -- it
