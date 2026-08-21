@@ -63,8 +63,9 @@ IPPO and green_wave rows — win, tie, or loss, reported either way.
 
 Unlike SP2/SP4's IPPO (one shared network, pooled transitions), SP5 gives
 each of the 3 corridor signals (C1/C2/C3) its own:
-- Q-network + target network (SB3 DQN default net_arch, `[64, 64]`)
-- replay buffer (SB3 default `buffer_size`)
+- Q-network + target network (net_arch `[64, 64]`, from
+  `algos.ALGOS['dqn']['defaults']()` — see §4)
+- replay buffer (`buffer_size` from the same source)
 - optimizer and epsilon-greedy exploration schedule
 
 They interact only through the shared SUMO env: each timestep, all 3 agents
@@ -170,12 +171,20 @@ make_corridor_env(scenario, lam, seed)
   - `target_update_interval` = 5000
 
   SP5 uses these 3 values and fills every other DQN hyperparameter
-  (`buffer_size`, `batch_size`, `gamma`, `tau`, `train_freq`,
-  `gradient_steps`, `exploration_fraction`, `exploration_final_eps`,
-  net_arch) with plain SB3 `DQN` defaults. This is a **best-effort
-  reconstruction, not the original tuned config**, and must be disclosed as
-  such in the findings doc — same spirit as SP2/SP4's disclosed reuse of
-  single-intersection PPO hyperparameters for the corridor.
+  (`buffer_size`, `batch_size`, `gamma`, `train_freq`, `exploration_fraction`,
+  `exploration_final_eps`, net_arch) from `algos.ALGOS['dqn']['defaults']()`
+  — this repo's own canonical "SB3 defaults" source (buffer_size 50000,
+  batch_size 64, gamma 0.99, train_freq 4, exploration_fraction 0.2,
+  exploration_final_eps 0.05, net_arch `[64, 64]`), not SB3's raw library
+  internals. This is the same source `validate_ppo_core.py`'s `matched_hp()`
+  already reads for PPO (`ALGOS['ppo']['defaults']()`), so both validation
+  scripts share one convention for what "matched to SB3" means in this
+  project. `tau` and `gradient_steps` are not overridden by either
+  `algos.py` or the 3 disclosed values, so both stay at SB3's own internal
+  defaults. This is a **best-effort reconstruction, not the original tuned
+  config**, and must be disclosed as such in the findings doc — same spirit
+  as SP2/SP4's disclosed reuse of single-intersection PPO hyperparameters for
+  the corridor.
 - **min_green floor:** 10, matching SP4's calibrated corridor floor
   (`docs/FINDINGS_2026-08-18-sp4-ippo-vs-corrected-bar.md` §"IPPO vs
   green_wave, paired, min_green=10") so IDQN's numbers are directly
