@@ -226,6 +226,9 @@ def main():
             df = _run_means(args.logs, "ippo", scenario, lam=lam)
             if not df.empty:
                 rows.append(_summarise(df, "ippo", scenario, lam))
+            df = _run_means(args.logs, "idqn", scenario, lam=lam)
+            if not df.empty:
+                rows.append(_summarise(df, "idqn", scenario, lam))
 
     if not rows:
         print("no eval CSVs found yet")
