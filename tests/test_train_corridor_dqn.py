@@ -11,16 +11,64 @@ import train_corridor_dqn as tcd
 @pytest.mark.skipif(not os.environ.get("SUMO_HOME"), reason="SUMO_HOME not set")
 def test_idqn_trains_and_evaluates(monkeypatch):
     monkeypatch.setenv("EPISODE_SECONDS", "200")
-    paths = tcd.train("corridor_offpeak", lam=0.5, seed=0, steps=600, min_green=10)
+    # steps must clear _DISCLOSED["learning_starts"] (5000) and
+    # _DISCLOSED["target_update_interval"] (5000) so train()'s own
+    # update-triggering logic (dc.dqn_loss + optimizer.step() + target sync)
+    # is actually exercised, not just the checkpoint-saving path -- at a
+    # shorter budget this test would pass identically even if that wiring
+    # were broken, since t >= learning_starts and t % target_update_interval
+    # == 0 would never be true.
+    steps = 5200
+    seed = 0
+    paths = tcd.train("corridor_offpeak", lam=0.5, seed=seed, steps=steps, min_green=10)
     assert set(paths.keys()) == set(tcd.CORRIDOR_TS_IDS)
     for p in paths.values():
         assert os.path.exists(p)
+
+    # Prove train()'s own loop actually reached and executed dc.dqn_loss +
+    # optimizer.step() for at least one agent -- tests/test_dqn_core.py's
+    # test_dqn_loss_gradient_updates_qnetwork_parameters already proves
+    # dqn_loss + an optimizer step move a QNetwork's weights when called
+    # directly; this proves train_corridor_dqn.train() actually reaches that
+    # code path, not just that dqn_core works in isolation.
+    #
+    # C1 is the first id in env.ts_ids (verified: make_corridor_env always
+    # returns ['C1', 'C2', 'C3']), so C1's q_net is the very first QNetwork
+    # train() builds, immediately after its torch.manual_seed(seed) call.
+    # Nothing between manual_seed(seed) and that QNetwork() call touches
+    # torch's global RNG (make_corridor_env doesn't import torch;
+    # np.random.default_rng(seed) is an independent numpy Generator, not
+    # torch's RNG). So a freshly-seeded QNetwork built the same way has
+    # IDENTICAL initial weights to C1's pre-training q_net -- any difference
+    # after loading the checkpoint proves a real gradient update happened.
+    import torch
+    import dqn_core as dc
+    import env_common as ec
+
+    probe_env = ec.make_corridor_env(seed=seed, scenario="corridor_offpeak", lam=0.5,
+                                     min_green=10)
+    obs_dim, act_dim = tcd._obs_act_dims(probe_env)
+    probe_env.close()
+
+    torch.manual_seed(seed)
+    fresh = dc.QNetwork(obs_dim, act_dim, hidden=tcd._hp()["hidden"])
+
+    ckpt = torch.load(paths["C1"], weights_only=True)
+    trained = dc.QNetwork(obs_dim, act_dim, hidden=tuple(ckpt["hidden"]))
+    trained.load_state_dict(ckpt["state_dict"])
+
+    changed = any(
+        not torch.equal(a, b)
+        for a, b in zip(fresh.state_dict().values(), trained.state_dict().values())
+    )
+    assert changed, ("C1's Q-network weights are unchanged from init -- "
+                     "train() never reached dqn_loss/optimizer.step()")
 
     # evaluate() has no model_path param (unlike train_corridor.evaluate) -- it
     # reconstructs each checkpoint's path via _model_path(..., seed, ...), so
     # seed must match the seed train() was called with (same convention
     # analysis/idqn_sweep.run_one uses: one seed for both calls).
-    csv = tcd.evaluate("corridor_offpeak", lam=0.5, seed=0, min_green=10, steps=600)
+    csv = tcd.evaluate("corridor_offpeak", lam=0.5, seed=seed, min_green=10, steps=steps)
     assert os.path.exists(csv)
     import pandas as pd
     df = pd.read_csv(csv)
