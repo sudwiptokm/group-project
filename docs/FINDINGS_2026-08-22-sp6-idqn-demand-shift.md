@@ -64,8 +64,11 @@ demand shape.
 **corridor_offpeak — gap widened materially.** +11.26 ± 0.42s vs +3.09 ±
 0.37s — more than 3x the in-distribution reference, and the widening is
 consistent (sd 0.42s across the 3 seeds, not noise). But this scenario's
-demand shift is *magnitude*, not structure (same shape, ~40% less total
-demand than `corridor_peak`), and the "harder for everyone" check separates
+demand shift is *magnitude*, not structure (same shape, ~1/3 of
+`corridor_peak`'s total demand, a ~67% reduction — `make_scenarios.py`'s
+`CORRIDOR_FACTORS` are 1.5 for peak vs 0.5 for offpeak, and completed-trip
+counts confirm it: ~977 trips offpeak vs ~2966 peak, ≈33%), and the "harder
+for everyone" check separates
 two possible explanations: is `corridor_offpeak` intrinsically harder for
 any controller, or is IDQN specifically failing to generalize to it?
 `max_pressure`'s own gap to `green_wave` on the same scenario, seed-paired,
