@@ -197,6 +197,31 @@ def _warn_mixed_eval_scenarios(df: pd.DataFrame, scenario: str, entity: str) -> 
               f"{mixed}")
 
 
+_INCIDENT_TAG = re.compile(r"_incident_conn")
+
+
+def _warn_mixed_incident(df: pd.DataFrame, scenario: str, entity: str) -> None:
+    """Refuse to silently average incident-window runs into a plain row.
+
+    SP7 tags incident-eval CSVs with '_incident' (after seed<n>, same
+    convention as every other optional fragment here) -- see
+    docs/superpowers/specs/2026-08-22-sp7-corridor-incident-design.md.
+    The glob in `_run_means` is fragment-agnostic by design, so a logs
+    dir holding both plain and incident-window runs for the same
+    controller/scenario would silently average them into one row --
+    same class of confound `_warn_mixed_greens`/`_warn_mixed_min_greens`/
+    `_warn_mixed_eval_scenarios` already guard against.
+    """
+    if df.empty or "run" not in df:
+        return
+    mixed = sorted(r for r in df["run"] if _INCIDENT_TAG.search(r))
+    if mixed:
+        print(f"  [!] {scenario}/{entity}: {len(mixed)} run(s) carry an "
+              f"'_incident' fragment -- evaluated under a mid-episode "
+              f"lane closure, not a plain no-incident run for this row: "
+              f"{mixed}")
+
+
 def _departed(scenario: str, horizon: float):
     """Demand the scenario asks for; None if its route file is missing."""
     route = SCENARIO_ROUTES.get(scenario)
@@ -244,6 +269,8 @@ def main():
     for scenario in corridor_scenarios:
         for ctrl in corridor_controllers:
             df = _run_means(args.logs, ctrl, scenario)
+            _warn_mixed_min_greens(df, scenario, ctrl)
+            _warn_mixed_incident(df, scenario, ctrl)
             if not df.empty:
                 rows.append(_summarise(df, ctrl, scenario, lam="na"))
 
@@ -253,10 +280,12 @@ def main():
             df = _run_means(args.logs, "ippo", scenario, lam=lam)
             if not df.empty:
                 _warn_mixed_eval_scenarios(df, scenario, f"ippo/lam{lam}")
+                _warn_mixed_incident(df, scenario, f"ippo/lam{lam}")
                 rows.append(_summarise(df, "ippo", scenario, lam))
             df = _run_means(args.logs, "idqn", scenario, lam=lam)
             if not df.empty:
                 _warn_mixed_eval_scenarios(df, scenario, f"idqn/lam{lam}")
+                _warn_mixed_incident(df, scenario, f"idqn/lam{lam}")
                 rows.append(_summarise(df, "idqn", scenario, lam))
 
     if not rows:
