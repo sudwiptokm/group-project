@@ -80,11 +80,31 @@ def test_incident_closes_and_reopens_lane(monkeypatch):
     lane_id = "C1_C2_0"
     seen_closed = False
     done = False
+    # vehicles observed on the closed lane before the window starts -- used
+    # below to scope the occupancy assertion to vehicles that freshly enter
+    # during the closure, not ones already on the lane and passing through
+    # (that's expected, not a defect).
+    ids_before_window = set()
     while not done:
         t = env.sumo.simulation.getTime()
+        current_ids = set(env.sumo.lane.getLastStepVehicleIDs(lane_id))
+        if t < 5.0:
+            ids_before_window |= current_ids
         if 5.0 <= t < 15.0:
-            assert "passenger" in env.sumo.lane.getDisallowed(lane_id)
+            for vc in ("passenger", "motorcycle", "moped"):
+                assert vc in env.sumo.lane.getDisallowed(lane_id)
             seen_closed = True
+            # no vehicle of type moto/auto/car (vClass motorcycle/moped/
+            # passenger) should freshly route onto the closed lane during
+            # the window -- this is the check that catches the original
+            # defect, since a getDisallowed()-only assertion passes even
+            # when moto/auto freely use the lane.
+            for veh_id in current_ids - ids_before_window:
+                vtype = env.sumo.vehicle.getTypeID(veh_id)
+                assert vtype not in ("moto", "auto", "car"), (
+                    f"vehicle {veh_id} of type {vtype} freshly entered "
+                    f"closed lane {lane_id} at t={t}"
+                )
         actions = {i: 0 for i in env.ts_ids}
         _, _, dones, _ = env.step(actions)
         done = dones["__all__"]

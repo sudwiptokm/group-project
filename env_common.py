@@ -412,7 +412,8 @@ class SafetyLoggingEnv(SumoEnvironment):
             if action is not None:
                 lane_id = cc.incident_lane_id(edge_id, lane_index)
                 if action == "apply":
-                    self.sumo.lane.setDisallowed(lane_id, ["passenger"])
+                    self.sumo.lane.setDisallowed(
+                        lane_id, ["passenger", "motorcycle", "moped"])
                     self._incident_applied = True
                 else:  # "revert"
                     # NOTE: setAllowed(lane_id, []) does NOT reopen a lane --
