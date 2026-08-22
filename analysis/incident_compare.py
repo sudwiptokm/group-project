@@ -83,31 +83,47 @@ def incident_sweep(seeds=SEEDS, force: bool = False) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def no_incident_mean(controller: str) -> float:
-    """Each controller's own no-incident corridor_peak delay -- the number the
-    incident cost is measured against. idqn isn't in corridor_sweep.csv (that
-    file only holds the non-RL baselines), so it uses INDIST_IDQN_DELAY."""
+def no_incident_for(controller: str, seed: int) -> float:
+    """This controller's own no-incident corridor_peak delay for one seed --
+    the number this seed's incident delay is measured against (seed-matched
+    pairing, the discipline analysis/idqn_sweep.py:paired_vs and
+    analysis/idqn_zeroshot.py:paired_gap already use elsewhere in this
+    codebase). Not a cross-seed mean: max_pressure's no-incident distribution
+    is confirmed bimodal across seeds (seeds 42/44 ~28-29s, seed 43 ~21.9s
+    per corridor_sweep.csv), so a mean would misrepresent any individual
+    seed's baseline. idqn isn't in corridor_sweep.csv (that file only holds
+    the non-RL baselines), so it uses the disclosed constant
+    INDIST_IDQN_DELAY for every seed -- the one case where a scalar shared
+    across seeds is correct and intentional."""
     if controller == "idqn":
         return INDIST_IDQN_DELAY
     df = pd.read_csv(CORRIDOR_SWEEP_CSV)
     rows = df[(df["controller"] == controller) & (df["scenario"] == SCENARIO) &
-              (df["min_green"] == MIN_GREEN)]
+              (df["min_green"] == MIN_GREEN) & (df["seed"] == seed)]
     if rows.empty:
-        raise ValueError(f"no no-incident rows for {controller}/{SCENARIO}/mg{MIN_GREEN}")
-    return float(rows["delay_per_trip"].mean())
+        raise ValueError(
+            f"no no-incident row for {controller}/{SCENARIO}/mg{MIN_GREEN}/seed{seed}")
+    return float(rows["delay_per_trip"].iloc[0])
 
 
-def incident_cost(incident_df: pd.DataFrame, controller: str, no_incident: float) -> dict:
-    """Mean/sd incident delay minus the controller's own no-incident number --
+def incident_cost(incident_df: pd.DataFrame, controller: str, no_incident: dict) -> dict:
+    """Mean/sd incident delay minus each seed's own no-incident number --
     the Δ the SP7 decision rule compares across controllers, not raw delay
     (idqn already starts from a higher no-incident baseline than green_wave,
-    per SP5, so raw delay alone would misrank this)."""
+    per SP5, so raw delay alone would misrank this). no_incident maps
+    seed -> that seed's own no-incident delay (build with no_incident_for);
+    subtraction is seed-matched, not a controller-wide mean applied to every
+    seed."""
     rows = incident_df[incident_df["controller"] == controller]
-    delta = rows["delay_per_trip"] - no_incident
+    baseline = rows["seed"].map(no_incident)
+    if baseline.isna().any():
+        missing = sorted(set(rows.loc[baseline.isna(), "seed"]))
+        raise ValueError(f"no no-incident baseline for {controller} seed(s) {missing}")
+    delta = rows["delay_per_trip"] - baseline
     return {
         "controller": controller,
         "incident_mean": float(rows["delay_per_trip"].mean()),
-        "no_incident": no_incident,
+        "no_incident_mean": float(baseline.mean()),
         "cost_mean": float(delta.mean()),
         "cost_sd": float(delta.std(ddof=1)) if len(delta) > 1 else float("nan"),
         "n": int(len(delta)),
@@ -118,8 +134,10 @@ def report(incident_df: pd.DataFrame) -> None:
     print(f"\n################ {SCENARIO}, incident "
           f"(C1_C2 lane closed 1800-2700s) ################")
     for controller in ("green_wave", "max_pressure", "idqn"):
-        cost = incident_cost(incident_df, controller, no_incident_mean(controller))
-        print(f"  {controller:13s} no-incident={cost['no_incident']:6.2f}s  "
+        seeds = sorted(incident_df.loc[incident_df["controller"] == controller, "seed"].unique())
+        no_incident = {int(s): no_incident_for(controller, int(s)) for s in seeds}
+        cost = incident_cost(incident_df, controller, no_incident)
+        print(f"  {controller:13s} no-incident={cost['no_incident_mean']:6.2f}s  "
               f"incident={cost['incident_mean']:6.2f}s  "
               f"cost(delta)={cost['cost_mean']:+6.2f} +/- {cost['cost_sd']:.2f}s  "
               f"n={cost['n']}")
