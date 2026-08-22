@@ -343,6 +343,10 @@ SCENARIO_ROUTES = {
     # C3=150 veh/h): a fixed-time plan applies one global through/cross split
     # to every signal, so it cannot give C2 more cross green than C1/C3 do
     "corridor_skew": "corridor_skew.rou.xml",
+    # corridor_skew's C2=600veh/h never approaches this module's own
+    # ~1800veh/h/lane saturation reference (make_scenarios.py's SKEW_HI_PROFILE
+    # docstring). Same skew shape, C2 pushed to exactly that ceiling.
+    "corridor_skew_hi": "corridor_skew_hi.rou.xml",
 }
 
 # Single source of truth for the corridor CLIs' --scenario choices and for the
@@ -461,7 +465,8 @@ def make_corridor_env(seed: int, scenario: str = "corridor_offpeak",
                       out_csv: Optional[str] = None,
                       teleport: int = None, tripinfo: bool = False,
                       min_green: int = None,
-                      incident: Optional[tuple] = None) -> "SafetyLoggingEnv":
+                      incident: Optional[tuple] = None,
+                      net_file: str = "corridor.net.xml") -> "SafetyLoggingEnv":
     """Multi-agent arterial corridor env (one agent per TLS: C1, C2, C3).
 
     Same obs (PCUObservationFunction) and safety-λ reward as make_env, but
@@ -500,7 +505,7 @@ def make_corridor_env(seed: int, scenario: str = "corridor_offpeak",
     if gui:
         extra += " --gui-settings-file gui-settings.xml --start --quit-on-end"
     return SafetyLoggingEnv(
-        net_file="corridor.net.xml",
+        net_file=net_file,
         route_file=SCENARIO_ROUTES[scenario],
         observation_class=PCUObservationFunction,
         use_gui=gui,

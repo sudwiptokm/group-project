@@ -1,7 +1,10 @@
 """Non-RL corridor baselines (green-wave, max-pressure) through the same eval-CSV
 frame compare.py consumes. No learning: control is rule-based each step."""
 import argparse
+import functools
 import os
+
+import sumolib
 
 import corridor_control as cc
 from env_common import (CORRIDOR_SCENARIOS, DEFAULT_MIN_GREEN,
@@ -9,11 +12,24 @@ from env_common import (CORRIDOR_SCENARIOS, DEFAULT_MIN_GREEN,
 
 CONTROLLERS = ("green_wave", "max_pressure")
 
-# green-wave inputs, sourced from the network: signal x-positions (m) of C1,C2,C3
-# from corridor.nod.xml; free-flow speed from the arterial edges in corridor.edg.xml.
-# Keep in sync if the corridor geometry/speed changes.
-SIGNAL_POSITIONS = [0.0, 200.0, 400.0]
-FREE_FLOW_SPEED = 13.89
+# C1/C2/C3 in arterial (x) order -- the signal ids every corridor net variant
+# shares regardless of geometry.
+SIGNAL_IDS = ("C1", "C2", "C3")
+
+
+@functools.lru_cache(maxsize=None)
+def _green_wave_inputs(net_file: str):
+    """Signal x-positions (m) and arterial free-flow speed (m/s), read
+    straight from `net_file` instead of hand-copied constants -- a network
+    variant with different geometry (e.g. corridor_irregular.net.xml) would
+    otherwise silently desync the offsets from the corridor they're supposed
+    to coordinate. Cached per net_file since it's re-read every call in
+    green_wave_actions()'s hot loop but the net itself never changes mid-run.
+    """
+    net = sumolib.net.readNet(net_file)
+    positions = [net.getNode(sid).getCoord()[0] for sid in SIGNAL_IDS]
+    speed = net.getEdge(f"{SIGNAL_IDS[0]}_{SIGNAL_IDS[1]}").getSpeed()
+    return positions, speed
 
 # SP7's one fixed incident: close 1 of 2 lanes on the C1_C2 arterial edge for
 # 15 minutes starting mid-episode. See
@@ -43,7 +59,7 @@ def _phase_movements(ts, phase_index) -> set:
     return movements
 
 
-def green_wave_actions(env) -> dict:
+def green_wave_actions(env, net_file: str = "corridor.net.xml") -> dict:
     """Fixed-time coordinated plan, evaluated at the current simulation TIME.
 
     Each signal holds a phase for `plan_phase_seconds(min_green, ...)` and its
@@ -63,7 +79,8 @@ def green_wave_actions(env) -> dict:
     realised as 15 s. That quantisation is a property of delta_time=5 and is
     disclosed; it is not the same thing as having no offset at all.
     """
-    offsets = cc.green_wave_offsets(SIGNAL_POSITIONS, free_flow_speed=FREE_FLOW_SPEED)
+    positions, free_flow_speed = _green_wave_inputs(net_file)
+    offsets = cc.green_wave_offsets(positions, free_flow_speed=free_flow_speed)
     actions = {}
     for i, ts_id in enumerate(env.ts_ids):
         ts = env.traffic_signals[ts_id]
@@ -114,7 +131,8 @@ def _max_pressure_actions(env):
 
 
 def run(scenario: str, controller: str, seed: int, min_green: int = None,
-        tripinfo: bool = True, incident: bool = False) -> str:
+        tripinfo: bool = True, incident: bool = False,
+        net_file: str = "corridor.net.xml") -> str:
     """Run one controller over one corridor scenario for a full episode and write
     the eval CSV. Returns the CSV path
     (logs/eval_<controller>_<scenario>_seed<seed>_mg<min_green>_conn<label>_ep<episode>.csv).
@@ -138,20 +156,33 @@ def run(scenario: str, controller: str, seed: int, min_green: int = None,
     never be averaged together with a no-incident run of the same
     (controller, scenario, seed, min_green) -- same discipline compare.py's
     _warn_mixed_* guards enforce elsewhere.
+
+    net_file selects the network geometry (default corridor.net.xml, the
+    regular 200m/200m spacing every prior sub-project used). A non-default
+    net_file gets its own '_net<label>' CSV fragment for the same reason
+    '_incident' does -- so a differently-shaped network's numbers can never
+    silently glob-average into the regular corridor's rows. compare.py does
+    not know this fragment; scripts consuming a non-default net_file's
+    output read the CSV/tripinfo path directly rather than going through
+    compare.py's aggregation.
     """
     os.makedirs("logs", exist_ok=True)
     min_green = resolve_min_green(min_green)
     csv = f"logs/eval_{controller}_{scenario}_seed{seed}_mg{min_green}"
     if incident:
         csv += "_incident"
+    if net_file != "corridor.net.xml":
+        label = net_file.removesuffix(".net.xml").removeprefix("corridor_")
+        csv += f"_net{label}"
     env = make_corridor_env(seed=seed, scenario=scenario, lam=0.0, out_csv=csv,
                             min_green=min_green, tripinfo=tripinfo,
-                            incident=INCIDENT if incident else None)
+                            incident=INCIDENT if incident else None,
+                            net_file=net_file)
     env.reset()
     done = False
     while not done:
         if controller == "green_wave":
-            actions = green_wave_actions(env)
+            actions = green_wave_actions(env, net_file=net_file)
         else:
             actions = _max_pressure_actions(env)
         _, _, dones, _ = env.step(actions)
@@ -184,6 +215,10 @@ if __name__ == "__main__":
                    help="skip per-trip output (the ranking metric comes from it)")
     p.add_argument("--incident", action="store_true",
                    help=f"apply the SP7 lane-closure incident ({INCIDENT})")
+    p.add_argument("--net-file", default="corridor.net.xml",
+                   help="network geometry to run on (default corridor.net.xml, "
+                        "the regular 200m/200m arterial spacing)")
     args = p.parse_args()
     run(args.scenario, args.controller, args.seed, min_green=args.min_green,
-        tripinfo=not args.no_tripinfo, incident=args.incident)
+        tripinfo=not args.no_tripinfo, incident=args.incident,
+        net_file=args.net_file)

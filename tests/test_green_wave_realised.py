@@ -73,7 +73,8 @@ def test_downstream_signals_are_offset_by_the_travel_time(monkeypatch):
     phase_seconds = cc.plan_phase_seconds(mg, YELLOW, DELTA)
     c1 = _switch_times(mg, ts_id="C1")
     c2 = _switch_times(mg, ts_id="C2")
-    offset = cb.SIGNAL_POSITIONS[1] / cb.FREE_FLOW_SPEED
+    positions, free_flow_speed = cb._green_wave_inputs("corridor.net.xml")
+    offset = (positions[1] - positions[0]) / free_flow_speed
     lag = (c2[0] - c1[0]) % (2 * phase_seconds)
     assert abs(lag - offset) <= DELTA, (
         f"C2 lags C1 by {lag}s, expected ~{offset:.1f}s")

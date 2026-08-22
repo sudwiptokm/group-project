@@ -155,25 +155,32 @@ def train(scenario: str, lam: float, seed: int, steps: int, min_green: int) -> d
 
 
 def _eval_out_stem(scenario: str, eval_scenario: str, lam: float, seed: int,
-                   min_green: int, steps: int, incident: bool = False) -> str:
+                   min_green: int, steps: int, incident: bool = False,
+                   net_file: str = "corridor.net.xml") -> str:
     """Eval CSV path stem. '_on_<eval_scenario>' is appended when
     eval_scenario differs from the checkpoint's training scenario (SP6
     zero-shot). '_incident' is appended when the SP7 lane closure was applied
     (docs/superpowers/specs/2026-08-22-sp7-corridor-incident-design.md) --
     both fragments can combine, since SP7's incident eval is itself zero-shot
-    against the corridor_peak checkpoints."""
+    against the corridor_peak checkpoints. '_net<label>' is appended when
+    net_file isn't the regular corridor.net.xml geometry -- same
+    never-silently-glob-together discipline, and same reason
+    corridor_baseline.run() tags its own non-default-net CSVs this way."""
     tag = _tag(scenario, lam, seed, min_green, steps)
     stem = f"logs/eval_idqn_{tag}"
     if eval_scenario != scenario:
         stem += f"_on_{eval_scenario}"
     if incident:
         stem += "_incident"
+    if net_file != "corridor.net.xml":
+        label = net_file.removesuffix(".net.xml").removeprefix("corridor_")
+        stem += f"_net{label}"
     return stem
 
 
 def evaluate(scenario: str, lam: float, seed: int, min_green: int, steps: int,
             tripinfo: bool = False, eval_scenario: str = None,
-            incident: bool = False) -> str:
+            incident: bool = False, net_file: str = "corridor.net.xml") -> str:
     """Run all 3 agents' greedy policies for one episode, writing one eval
     CSV in the SafetyLoggingEnv format so compare.py reads it as `idqn`. With
     tripinfo=True also writes the per-trip XML analysis/idqn_sweep.py reduces.
@@ -190,14 +197,20 @@ def evaluate(scenario: str, lam: float, seed: int, min_green: int, steps: int,
     scenario `eval_scenario` names.
 
     incident=True applies corridor_baseline.INCIDENT to the eval env -- the
-    same fixed lane closure every controller in the SP7 comparison faces."""
+    same fixed lane closure every controller in the SP7 comparison faces.
+
+    net_file, if given, runs the checkpoint's greedy policy on a DIFFERENT
+    network geometry than it trained on (zero-shot, same spirit as
+    eval_scenario) -- the checkpoint is still looked up under `scenario`'s
+    regular-net path, only the env's geometry changes."""
     os.makedirs("logs", exist_ok=True)
     eval_scenario = eval_scenario or scenario
     out_csv = _eval_out_stem(scenario, eval_scenario, lam, seed, min_green, steps,
-                             incident=incident)
+                             incident=incident, net_file=net_file)
     env = make_corridor_env(seed=seed, scenario=eval_scenario, lam=lam,
                             min_green=min_green, out_csv=out_csv, tripinfo=tripinfo,
-                            incident=cb.INCIDENT if incident else None)
+                            incident=cb.INCIDENT if incident else None,
+                            net_file=net_file)
     ids = env.ts_ids
     obs_dim, act_dim = _obs_act_dims(env)
     policies = {}

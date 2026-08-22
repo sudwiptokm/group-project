@@ -99,6 +99,7 @@ EPISODE_SECONDS = 3600.0
 TIDAL_SWITCH_S = 1800.0
 
 CORRIDOR_SKEW_DST = "corridor_skew.rou.xml"
+CORRIDOR_SKEW_HI_DST = "corridor_skew_hi.rou.xml"
 
 # Per-flow multiplier on the corridor base rates (corridor.rou.xml, pre-scaling).
 # The arterial keeps corridor_peak's 1.5x -- byte-identical arterial demand, so
@@ -113,6 +114,20 @@ SKEW_PROFILE = {
     "f_wb": 1.5,
     "f_x1": 0.75,
     "f_x2": 3.0,
+    "f_x3": 0.75,
+}
+
+# corridor_skew's C2 = 600 veh/h never approaches this module's own
+# ~1800 veh/h/lane saturation reference -- a disclosed, untested gap carried
+# since SP4. SKEW_HI_PROFILE pushes ONLY C2's cross street to that ceiling
+# (f_x2: 200 * 9.0 = 1800 veh/h) while leaving the arterial and C1/C3 exactly
+# as SKEW_PROFILE has them, so any widened gap is attributable to C2's
+# saturation alone, not a second confound stacked on top of the skew.
+SKEW_HI_PROFILE = {
+    "f_eb": 1.5,
+    "f_wb": 1.5,
+    "f_x1": 0.75,
+    "f_x2": 9.0,
     "f_x3": 0.75,
 }
 
@@ -214,12 +229,12 @@ def write_tidal(src: str, dst: str) -> None:
     print(f"wrote {dst} (tidal, switch at {TIDAL_SWITCH_S:g}s, stochastic arrivals)")
 
 
-def write_skew(src: str, dst: str) -> None:
-    """Emit the skew corridor scenario: cross-street demand is redistributed
+def write_skew(src: str, dst: str, profile: dict = SKEW_PROFILE) -> None:
+    """Emit a skew corridor scenario: cross-street demand is redistributed
     unevenly across nodes while the arterial stays at corridor_peak's rate.
 
     Unlike write_tidal, no flow needs a time split -- every flow in
-    SKEW_PROFILE keeps a single multiplier for the whole episode, so each
+    `profile` keeps a single multiplier for the whole episode, so each
     input <flow> maps to exactly one output <flow>, in source order. Arrivals
     are exponential for the same reason the other corridor scenarios' are --
     see the module docstring. The flows are rewritten in place as one block,
@@ -237,7 +252,7 @@ def write_skew(src: str, dst: str) -> None:
         indent, raw = m.group(1), m.group(2)
         attrs = dict(_ATTR.findall(raw))
         flow_id = attrs["id"]
-        mult = SKEW_PROFILE[flow_id]                # unlisted id -> KeyError
+        mult = profile[flow_id]                     # unlisted id -> KeyError
         base = float(attrs["vehsPerHour"])
         elements.append(_flow_el(indent, attrs, flow_id, base * mult,
                                   0.0, EPISODE_SECONDS))
@@ -256,3 +271,4 @@ if __name__ == "__main__":
         scale_file(CORRIDOR_SRC, dst, factor, stochastic=True)
     write_tidal(CORRIDOR_SRC, CORRIDOR_TIDAL_DST)
     write_skew(CORRIDOR_SRC, CORRIDOR_SKEW_DST)
+    write_skew(CORRIDOR_SRC, CORRIDOR_SKEW_HI_DST, profile=SKEW_HI_PROFILE)
