@@ -50,11 +50,14 @@ traffic — see below.
 |---|---|---|---|
 | green_wave | 13.47s | 14.60s | **+1.13s ± 0.13s** |
 | max_pressure | 26.38s | 27.26s | **+0.87s ± 3.57s** |
-| idqn | 16.56s | 17.05s | **+0.49s ± 0.54s** |
+| idqn | 16.56s | 17.05s | **+0.49s ± 0.21s** |
 
-(`idqn`'s no-incident baseline is SP5's disclosed in-distribution constant,
-16.56s — idqn has no row in `corridor_sweep.csv`, which only holds the
-non-RL baselines, per that file's own design.)
+(`idqn`'s no-incident baseline is read per-seed from its own no-incident
+`corridor_peak` tripinfo XMLs — SP5 checkpoints,
+`logs/eval_idqn_corridor_peak_lam05_seed{42,43,44}_mg10_s100000_tripinfo.xml`
+— the same seed-matching discipline used for `green_wave`/`max_pressure`
+above; idqn has no row in `corridor_sweep.csv`, which only holds the non-RL
+baselines, per that file's own design. Per-seed: 16.952s/16.490s/16.244s.)
 
 By mean Δ, IDQN's cost (+0.49s) is smallest — smaller than both
 `green_wave`'s (+1.13s) and `max_pressure`'s (+0.87s). Per the spec's
@@ -126,11 +129,13 @@ directions:
 
 ### idqn's cost is smallest and tightest, but starts from a much worse absolute number
 
-idqn's Δ (+0.49s ± 0.54s) is both the smallest mean and the least variable
-of the three (excluding `green_wave`'s tighter sd, which comes with a
-larger mean). Per-seed: 17.67s/16.78s/16.70s incident vs the 16.56s
-no-incident constant — deltas of +1.11s, +0.22s, +0.14s. No sign-flipping,
-no seed dominates the mean the way `max_pressure`'s seed 43 does.
+idqn's Δ (+0.49s ± 0.21s) has the smallest mean of the three, and a much
+tighter sd than `max_pressure`'s (0.21s vs 3.57s) — though `green_wave`'s sd
+(0.13s) is still the tightest of the three, which comes with a larger mean.
+Per-seed: 17.666s/16.784s/16.696s incident vs each seed's own no-incident
+number (16.952s/16.490s/16.244s) — deltas of +0.714s, +0.294s, +0.452s. No
+sign-flipping, no seed dominates the mean the way `max_pressure`'s seed 43
+does.
 
 But idqn's no-incident baseline (16.56s) is already 3.09s worse than
 `green_wave`'s (13.47s, SP5's own finding, unchanged by this eval) and its

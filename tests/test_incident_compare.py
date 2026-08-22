@@ -85,9 +85,27 @@ def test_no_incident_for_raises_if_seed_missing(tmp_path, monkeypatch):
         ic.no_incident_for("green_wave", 43)
 
 
-def test_no_incident_for_idqn_returns_disclosed_constant_for_any_seed():
-    # idqn has no per-seed row in corridor_sweep.csv by design -- every seed
-    # uses the same disclosed constant, which is intentional and correct
-    # here (unlike the green_wave/max_pressure case).
-    assert ic.no_incident_for("idqn", 42) == ic.INDIST_IDQN_DELAY
-    assert ic.no_incident_for("idqn", 999) == ic.INDIST_IDQN_DELAY
+def test_no_incident_for_idqn_reads_its_own_per_seed_tripinfo(monkeypatch):
+    # idqn has no per-seed row in corridor_sweep.csv by design -- unlike a
+    # disclosed scalar constant shared across seeds, its no-incident baseline
+    # must now be read per-seed from its own no-incident tripinfo XML (SP5
+    # checkpoints), same seed-matching discipline as green_wave/max_pressure.
+    seen_stems = []
+
+    def fake_reduce_tripinfo(path, departed=None):
+        seen_stems.append(path)
+        # fabricate a distinct delay per seed so a mean-collapsed stub
+        # couldn't accidentally pass this test
+        delay = {42: 16.952, 43: 16.490, 44: 16.244}[int(path.split("seed")[1].split("_")[0])]
+        return {"trip_time_loss_mean": delay}
+
+    monkeypatch.setattr(ic, "reduce_tripinfo", fake_reduce_tripinfo)
+
+    assert abs(ic.no_incident_for("idqn", 42) - 16.952) < 1e-9
+    assert abs(ic.no_incident_for("idqn", 43) - 16.490) < 1e-9
+    assert abs(ic.no_incident_for("idqn", 44) - 16.244) < 1e-9
+    # each seed reads its own tripinfo stem, not one shared path
+    assert len(set(seen_stems)) == 3
+    for seed, path in zip((42, 43, 44), seen_stems):
+        assert f"seed{seed}" in path
+        assert path.endswith("_tripinfo.xml")
