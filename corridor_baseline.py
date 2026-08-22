@@ -160,10 +160,7 @@ def run(scenario: str, controller: str, seed: int, min_green: int = None,
     # never gets one, so save it explicitly (mirrors baseline.py exactly).
     env.save_csv(env.out_csv_name, env.episode)
     env.close()
-    out = (
-        f"logs/eval_{controller}_{scenario}_seed{seed}_mg{min_green}"
-        f"_conn{env.label}_ep{env.episode}.csv"
-    )
+    out = f"{csv}_conn{env.label}_ep{env.episode}.csv"
     print(f"corridor baseline written: {out}")
     return out
 
