@@ -19,6 +19,8 @@ from sumo_rl import SumoEnvironment
 from sumo_rl.environment.observations import ObservationFunction
 from sumo_rl.environment.traffic_signal import TrafficSignal
 
+import corridor_control as cc
+
 # ----------------------------------------------------------------------------
 # PCU weights  (keep in sync with vtypes.add.xml vType ids)
 # ----------------------------------------------------------------------------
@@ -372,11 +374,25 @@ class SafetyLoggingEnv(SumoEnvironment):
     Both the reward and these metrics read the same per-window accumulator
     (_SafetyWindow), sampled every simulation second rather than only at action
     steps — see _SafetyWindow for why the action-step sample is unusable.
+
+    Optionally applies one deterministic mid-episode lane closure (SP7):
+    `incident=(edge_id, lane_index, start_s, duration_s)` closes that lane to
+    passenger traffic at start_s and reopens it at start_s + duration_s.
+    None (default) means no incident -- every existing call site is
+    unaffected. Scoped to a single episode per env instance: this plan's
+    incident eval runs are all single-episode (baseline.py/train_corridor_dqn
+    evaluate()), so the applied/reverted flag is never reset mid-run; a
+    training loop that reset() across many episodes with an incident set
+    would need that handled too, but that's out of scope here (spec
+    docs/superpowers/specs/2026-08-22-sp7-corridor-incident-design.md
+    explicitly defers incident-aware training).
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, incident=None, **kwargs):
         super().__init__(*args, **kwargs)
         self._safety_window = _SafetyWindow()
+        self._incident = incident
+        self._incident_applied = False
 
     def step(self, action):
         # a new decision window begins; the totals read after super().step()
@@ -389,6 +405,25 @@ class SafetyLoggingEnv(SumoEnvironment):
         # traffic_signals do not exist yet during the reset that starts SUMO
         for ts in getattr(self, "traffic_signals", {}).values():
             self._safety_window.accumulate(ts)
+        if self._incident is not None:
+            edge_id, lane_index, start_s, duration_s = self._incident
+            t = self.sumo.simulation.getTime()
+            action = cc.incident_action(t, start_s, duration_s, self._incident_applied)
+            if action is not None:
+                lane_id = cc.incident_lane_id(edge_id, lane_index)
+                if action == "apply":
+                    self.sumo.lane.setDisallowed(lane_id, ["passenger"])
+                    self._incident_applied = True
+                else:  # "revert"
+                    # NOTE: setAllowed(lane_id, []) does NOT reopen a lane --
+                    # verified against this SUMO version's TraCI: an empty
+                    # *allowed* list means "nothing is allowed" (every vClass
+                    # ends up in getDisallowed), the opposite of what its
+                    # docstring claims. setDisallowed(lane_id, []) is what
+                    # actually clears the restriction back to the lane's
+                    # original (unrestricted) state.
+                    self.sumo.lane.setDisallowed(lane_id, [])
+                    self._incident_applied = False
 
     def _get_safety_info(self) -> dict:
         # Both sides of this come from the window accumulator, not from a fresh
@@ -424,7 +459,8 @@ def make_corridor_env(seed: int, scenario: str = "corridor_offpeak",
                       lam: float = 0.0, gui: bool = False,
                       out_csv: Optional[str] = None,
                       teleport: int = None, tripinfo: bool = False,
-                      min_green: int = None) -> "SafetyLoggingEnv":
+                      min_green: int = None,
+                      incident: Optional[tuple] = None) -> "SafetyLoggingEnv":
     """Multi-agent arterial corridor env (one agent per TLS: C1, C2, C3).
 
     Same obs (PCUObservationFunction) and safety-λ reward as make_env, but
@@ -446,6 +482,9 @@ def make_corridor_env(seed: int, scenario: str = "corridor_offpeak",
     knob here so Phase 1 can sweep it against the green-wave and max-pressure
     references before anything is trained, exactly as the single-intersection
     sweep did.
+
+    `incident`, if given, is forwarded straight to SafetyLoggingEnv -- see
+    that class's docstring for the format and scope.
     """
     if teleport is None:
         teleport = int(os.environ.get("TIME_TO_TELEPORT", "-1"))
@@ -476,6 +515,7 @@ def make_corridor_env(seed: int, scenario: str = "corridor_offpeak",
         out_csv_name=out_csv,
         sumo_warnings=False,
         additional_sumo_cmd=extra,
+        incident=incident,
     )
 
 

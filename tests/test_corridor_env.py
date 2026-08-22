@@ -14,11 +14,25 @@ import os
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.slow
-
 import env_common as ec
+from env_common import SafetyLoggingEnv, make_corridor_env
 
 
+def test_safety_logging_env_incident_defaults_to_none():
+    import inspect
+    sig = inspect.signature(SafetyLoggingEnv.__init__)
+    assert "incident" in sig.parameters
+    assert sig.parameters["incident"].default is None
+
+
+def test_make_corridor_env_incident_defaults_to_none():
+    import inspect
+    sig = inspect.signature(make_corridor_env)
+    assert "incident" in sig.parameters
+    assert sig.parameters["incident"].default is None
+
+
+@pytest.mark.slow
 @pytest.mark.skipif(not os.environ.get("SUMO_HOME"), reason="SUMO_HOME not set")
 def test_corridor_env_reset_step(monkeypatch):
     # monkeypatch auto-restores EPISODE_SECONDS so a short test episode does not
@@ -53,4 +67,27 @@ def test_corridor_env_reset_step(monkeypatch):
     # dones dict has per-agent keys + '__all__'
     assert "__all__" in dones, "dones dict should contain '__all__' key"
 
+    env.close()
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(not os.environ.get("SUMO_HOME"), reason="SUMO_HOME not set")
+def test_incident_closes_and_reopens_lane(monkeypatch):
+    monkeypatch.setenv("EPISODE_SECONDS", "20")
+    env = make_corridor_env(seed=0, scenario="corridor_offpeak", min_green=10,
+                            incident=("C1_C2", 0, 5.0, 10.0))
+    env.reset()
+    lane_id = "C1_C2_0"
+    seen_closed = False
+    done = False
+    while not done:
+        t = env.sumo.simulation.getTime()
+        if 5.0 <= t < 15.0:
+            assert "passenger" in env.sumo.lane.getDisallowed(lane_id)
+            seen_closed = True
+        actions = {i: 0 for i in env.ts_ids}
+        _, _, dones, _ = env.step(actions)
+        done = dones["__all__"]
+    assert seen_closed, "incident window was never reached in a 20s episode"
+    assert list(env.sumo.lane.getDisallowed(lane_id)) == []
     env.close()
