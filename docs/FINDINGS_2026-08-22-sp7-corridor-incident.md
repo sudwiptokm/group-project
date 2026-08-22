@@ -127,7 +127,7 @@ directions:
    scenario should treat that investigation as describing the old buggy
    code's behavior, not this one's.
 
-### idqn's cost is smallest and tightest, but starts from a much worse absolute number
+### idqn's cost is smallest, but starts from a much worse absolute number
 
 idqn's Δ (+0.49s ± 0.21s) has the smallest mean of the three, and a much
 tighter sd than `max_pressure`'s (0.21s vs 3.57s) — though `green_wave`'s sd
