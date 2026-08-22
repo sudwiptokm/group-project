@@ -1,0 +1,10 @@
+controller,scenario,seed,min_green,delay_per_trip,trips
+green_wave,corridor_peak,42,10,13.48935801630436,2944
+green_wave,corridor_peak,43,10,13.595311978645315,2997
+green_wave,corridor_peak,44,10,13.411709053916601,2949
+max_pressure,corridor_peak,42,10,29.23279481935929,2934
+max_pressure,corridor_peak,43,10,26.187016778523414,2980
+max_pressure,corridor_peak,44,10,27.969499148211206,2935
+idqn,corridor_peak,42,10,16.796107519564497,2939
+idqn,corridor_peak,43,10,16.58066755674234,2996
+idqn,corridor_peak,44,10,16.399025885558565,2936
