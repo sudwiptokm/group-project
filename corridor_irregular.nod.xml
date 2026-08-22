@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Irregular-spacing variant of corridor.nod.xml: same 3-signal arterial
+     topology (C1,C2,C3 on y=0), but asymmetric block lengths (600m then
+     100m instead of 200m/200m). A single green-wave offset per signal is
+     exact travel time from C1, so it still serves ONE direction perfectly;
+     asymmetric spacing means eastbound and westbound platoons can no longer
+     both be served by the same shared through-phase offset at C2, which
+     equal spacing incidentally allows. Reuses corridor.edg.xml verbatim
+     (edges reference node ids, not coordinates). -->
+<nodes>
+    <node id="W"  x="-200" y="0"    type="priority"/>
+    <node id="C1" x="0"    y="0"    type="traffic_light"/>
+    <node id="C2" x="600"  y="0"    type="traffic_light"/>
+    <node id="C3" x="700"  y="0"    type="traffic_light"/>
+    <node id="E"  x="900"  y="0"    type="priority"/>
+
+    <node id="N1" x="0"    y="200"  type="priority"/>
+    <node id="S1" x="0"    y="-200" type="priority"/>
+    <node id="N2" x="600"  y="200"  type="priority"/>
+    <node id="S2" x="600"  y="-200" type="priority"/>
+    <node id="N3" x="700"  y="200"  type="priority"/>
+    <node id="S3" x="700"  y="-200" type="priority"/>
+</nodes>
