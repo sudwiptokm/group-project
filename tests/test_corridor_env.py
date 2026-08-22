@@ -74,6 +74,21 @@ def test_corridor_env_reset_step(monkeypatch):
 @pytest.mark.skipif(not os.environ.get("SUMO_HOME"), reason="SUMO_HOME not set")
 def test_incident_closes_and_reopens_lane(monkeypatch):
     monkeypatch.setenv("EPISODE_SECONDS", "20")
+    # NOTE on what actually pins the regression this test guards (SP7 final
+    # review, finding 3): the `getDisallowed()` 3-vClass assertion just below
+    # is the check that catches the original defect (it fails on pre-fix code,
+    # which only restricted `passenger` and left moto/auto free). The
+    # occupancy loop after it (comparing `current_ids` against
+    # `ids_before_window`) is a best-effort SECONDARY check, not the decisive
+    # one -- in this test's exact configuration (corridor_offpeak,
+    # EPISODE_SECONDS=20, incident window t=5-15s), the W_C1->C1_C2 route
+    # needs roughly 15s plus a signal cycle to deliver any vehicle to
+    # `C1_C2_0` at all, so the loop body below never actually executes (zero
+    # vehicles occupy the lane during the window, closed or not) -- it cannot
+    # be relied on to catch a regression here. It's left in (harmless, and it
+    # would fire if this scenario/timing ever changed enough for traffic to
+    # reach the lane during the window) but a reader should not assume it is
+    # exercising anything beyond the `getDisallowed()` check above.
     env = make_corridor_env(seed=0, scenario="corridor_offpeak", min_green=10,
                             incident=("C1_C2", 0, 5.0, 10.0))
     env.reset()
@@ -94,11 +109,11 @@ def test_incident_closes_and_reopens_lane(monkeypatch):
             for vc in ("passenger", "motorcycle", "moped"):
                 assert vc in env.sumo.lane.getDisallowed(lane_id)
             seen_closed = True
-            # no vehicle of type moto/auto/car (vClass motorcycle/moped/
-            # passenger) should freshly route onto the closed lane during
-            # the window -- this is the check that catches the original
-            # defect, since a getDisallowed()-only assertion passes even
-            # when moto/auto freely use the lane.
+            # Best-effort secondary check (see NOTE above the env setup): no
+            # vehicle of type moto/auto/car (vClass motorcycle/moped/
+            # passenger) should freshly route onto the closed lane during the
+            # window. Structurally near-vacuous in this scenario/timing --
+            # kept for defense-in-depth, not relied on as the primary guard.
             for veh_id in current_ids - ids_before_window:
                 vtype = env.sumo.vehicle.getTypeID(veh_id)
                 assert vtype not in ("moto", "auto", "car"), (
