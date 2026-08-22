@@ -18,3 +18,44 @@ def test_run_means_reads_controller_csv(tmp_path):
     assert len(df) == 1
     # metrics are time-averaged over the episode rows
     assert df["system_mean_waiting_time"].iloc[0] == 2.0
+
+
+class TestCompareWarnsOnMixedEvalScenarios:
+    """A corridor_peak checkpoint zero-shot-evaluated on corridor_offpeak still
+    matches the corridor_peak glob (_run_means keys on the CHECKPOINT scenario
+    embedded early in the filename, not the demand actually run) -- averaging
+    it into the corridor_peak row silently mixes in a different demand. Same
+    class of confound as TestCompareWarnsOnMixedMinGreens in
+    tests/test_min_green.py; mirrors that test's shape."""
+
+    def _runs(self, *names):
+        return pd.DataFrame({"run": list(names)})
+
+    def test_warns_when_a_group_carries_a_zero_shot_run(self, capsys):
+        from compare import _warn_mixed_eval_scenarios
+
+        _warn_mixed_eval_scenarios(self._runs(
+            "eval_idqn_corridor_peak_lam05_seed42_mg10_s100000_conn0_ep1.csv",
+            "eval_idqn_corridor_peak_lam05_seed43_mg10_s100000_on_corridor_offpeak_conn1_ep1.csv",
+        ), "corridor_peak", "idqn/lam05")
+
+        out = capsys.readouterr().out
+        assert "_on_" in out
+        assert "corridor_offpeak" in out
+
+    def test_silent_when_every_run_is_in_distribution(self, capsys):
+        from compare import _warn_mixed_eval_scenarios
+
+        _warn_mixed_eval_scenarios(self._runs(
+            "eval_idqn_corridor_peak_lam05_seed42_mg10_s100000_conn0_ep1.csv",
+            "eval_idqn_corridor_peak_lam05_seed43_mg10_s100000_conn1_ep1.csv",
+        ), "corridor_peak", "idqn/lam05")
+
+        assert capsys.readouterr().out == ""
+
+    def test_empty_group_does_not_warn(self, capsys):
+        from compare import _warn_mixed_eval_scenarios
+
+        _warn_mixed_eval_scenarios(pd.DataFrame(), "corridor_peak", "idqn/lam05")
+
+        assert capsys.readouterr().out == ""

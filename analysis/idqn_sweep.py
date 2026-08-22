@@ -79,7 +79,11 @@ def run_one(scenario: str, seed: int, min_green: int, lam: float, steps: int,
     else:
         took = float("nan")
     tcd.evaluate(scenario, lam, seed, min_green, steps, tripinfo=True)
-    trip = tripinfo_path(f"logs/eval_idqn_{tcd._tag(scenario, lam, seed, min_green, steps)}")
+    # in-distribution only (idqn_sweep never passes a different eval_scenario),
+    # so eval_scenario=scenario -- routes through the single source of truth
+    # for this filename convention (train_corridor_dqn._eval_out_stem, added
+    # for SP6's zero-shot eval) instead of hand-building the stem here.
+    trip = tripinfo_path(tcd._eval_out_stem(scenario, scenario, lam, seed, min_green, steps))
     row = reduce_tripinfo(trip)
     return {
         "controller": "idqn", "scenario": scenario, "seed": seed,

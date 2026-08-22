@@ -4,6 +4,8 @@ import pytest
 
 idq = pytest.importorskip("analysis.idqn_sweep")
 
+import train_corridor_dqn as tcd
+
 
 def _rows(controller, scenario, min_green, delays):
     return pd.DataFrame([
@@ -11,6 +13,40 @@ def _rows(controller, scenario, min_green, delays):
          "min_green": min_green, "delay_per_trip": d, "trips": 2900, "wall_s": 1.0}
         for i, d in enumerate(delays)
     ])
+
+
+def test_run_one_trip_path_uses_eval_out_stem(monkeypatch):
+    """run_one's tripinfo lookup must route through
+    train_corridor_dqn._eval_out_stem -- the single source of truth for the
+    eval-CSV filename convention (added for SP6's zero-shot eval) -- rather
+    than hand-building the stem inline. idqn_sweep only ever evaluates
+    in-distribution, so this passes `scenario` as both the checkpoint scenario
+    and the eval scenario; that must produce the identical stem the old
+    inline `f"logs/eval_idqn_{tcd._tag(...)}"` construction did (pure
+    refactor, no behavior change)."""
+    scenario, seed, min_green, lam, steps = "corridor_peak", 42, 10, 0.5, 100000
+
+    # checkpoints "exist" so run_one skips training entirely
+    monkeypatch.setattr(idq.os.path, "exists", lambda p: True)
+    monkeypatch.setattr(tcd, "evaluate", lambda *a, **k: "unused.csv")
+
+    seen = {}
+
+    def fake_tripinfo_path(stem):
+        seen["stem"] = stem
+        return "fake_tripinfo.xml"
+
+    monkeypatch.setattr(idq, "tripinfo_path", fake_tripinfo_path)
+    monkeypatch.setattr(idq, "reduce_tripinfo", lambda path: {
+        "trip_time_loss_mean": 1.0, "trips_completed": 100,
+    })
+
+    idq.run_one(scenario, seed, min_green, lam, steps)
+
+    expected = tcd._eval_out_stem(scenario, scenario, lam, seed, min_green, steps)
+    assert seen["stem"] == expected
+    # sanity: still matches the old hand-built convention exactly
+    assert seen["stem"] == f"logs/eval_idqn_{tcd._tag(scenario, lam, seed, min_green, steps)}"
 
 
 def test_paired_vs_seed_alignment():
