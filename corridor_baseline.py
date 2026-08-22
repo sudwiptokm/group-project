@@ -15,6 +15,14 @@ CONTROLLERS = ("green_wave", "max_pressure")
 SIGNAL_POSITIONS = [0.0, 200.0, 400.0]
 FREE_FLOW_SPEED = 13.89
 
+# SP7's one fixed incident: close 1 of 2 lanes on the C1_C2 arterial edge for
+# 15 minutes starting mid-episode. See
+# docs/superpowers/specs/2026-08-22-sp7-corridor-incident-design.md for why
+# this edge/timing/duration. Defined once here; train_corridor_dqn.py imports
+# it rather than redefining it, so every controller in a comparison faces the
+# identical event.
+INCIDENT = ("C1_C2", 0, 1800.0, 900.0)
+
 
 def _phase_movements(ts, phase_index) -> set:
     """The (incoming_lane, outgoing_lane) pairs a green phase discharges.
@@ -106,7 +114,7 @@ def _max_pressure_actions(env):
 
 
 def run(scenario: str, controller: str, seed: int, min_green: int = None,
-        tripinfo: bool = True) -> str:
+        tripinfo: bool = True, incident: bool = False) -> str:
     """Run one controller over one corridor scenario for a full episode and write
     the eval CSV. Returns the CSV path
     (logs/eval_<controller>_<scenario>_seed<seed>_mg<min_green>_conn<label>_ep<episode>.csv).
@@ -124,12 +132,21 @@ def run(scenario: str, controller: str, seed: int, min_green: int = None,
 
     Neither had ever been calibrated; that is Phase 1. The floor is recorded in
     the CSV name so two floors cannot be averaged into one row.
+
+    incident=True applies INCIDENT (this module's one fixed lane closure) to
+    the run; the output CSV name carries an '_incident' fragment so it can
+    never be averaged together with a no-incident run of the same
+    (controller, scenario, seed, min_green) -- same discipline compare.py's
+    _warn_mixed_* guards enforce elsewhere.
     """
     os.makedirs("logs", exist_ok=True)
     min_green = resolve_min_green(min_green)
     csv = f"logs/eval_{controller}_{scenario}_seed{seed}_mg{min_green}"
+    if incident:
+        csv += "_incident"
     env = make_corridor_env(seed=seed, scenario=scenario, lam=0.0, out_csv=csv,
-                            min_green=min_green, tripinfo=tripinfo)
+                            min_green=min_green, tripinfo=tripinfo,
+                            incident=INCIDENT if incident else None)
     env.reset()
     done = False
     while not done:
@@ -168,6 +185,8 @@ if __name__ == "__main__":
                         "this IS the green duration -- see run()")
     p.add_argument("--no-tripinfo", action="store_true",
                    help="skip per-trip output (the ranking metric comes from it)")
+    p.add_argument("--incident", action="store_true",
+                   help=f"apply the SP7 lane-closure incident ({INCIDENT})")
     args = p.parse_args()
     run(args.scenario, args.controller, args.seed, min_green=args.min_green,
-        tripinfo=not args.no_tripinfo)
+        tripinfo=not args.no_tripinfo, incident=args.incident)
