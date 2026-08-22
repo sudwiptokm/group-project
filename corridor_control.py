@@ -3,7 +3,7 @@
 Kept SUMO-free so the math is unit-tested in isolation; corridor_baseline.py
 wires these to live TraCI state.
 """
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 def green_wave_offsets(positions: List[float], free_flow_speed: float) -> List[float]:
@@ -76,3 +76,26 @@ def phase_pressure(movements, queue_of) -> float:
 def max_pressure_phase(phase_pressures: Dict[int, float]) -> int:
     """Pick the phase with the greatest total pressure; ties -> lowest phase id."""
     return max(sorted(phase_pressures), key=lambda p: phase_pressures[p])
+
+
+def incident_lane_id(edge_id: str, lane_index: int) -> str:
+    """SUMO's lane-id convention: '<edge_id>_<lane_index>'."""
+    return f"{edge_id}_{lane_index}"
+
+
+def incident_action(t: float, start_s: float, duration_s: float,
+                    applied: bool) -> Optional[str]:
+    """What to do to the incident lane at simulation time `t`, given whether
+    the closure is already applied.
+
+    Returns 'apply' the first time t reaches start_s (closure not yet
+    applied), 'revert' the first time t reaches start_s + duration_s (closure
+    still applied), or None otherwise -- including every step after the
+    caller has already acted on the returned instruction, so the caller can
+    poll this every simulation second without double-applying or
+    double-reverting."""
+    if not applied and t >= start_s and t < start_s + duration_s:
+        return "apply"
+    if applied and t >= start_s + duration_s:
+        return "revert"
+    return None
