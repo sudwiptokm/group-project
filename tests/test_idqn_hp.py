@@ -46,3 +46,20 @@ def test_train_and_evaluate_require_min_green_kwarg():
         inspect.Parameter.empty
     assert inspect.signature(tcd.evaluate).parameters["min_green"].default is \
         inspect.Parameter.empty
+
+
+def test_eval_out_stem_in_distribution_unchanged():
+    assert tcd._eval_out_stem("corridor_peak", "corridor_peak", 0.5, 42, 10, 100000) == \
+        "logs/eval_idqn_corridor_peak_lam05_seed42_mg10_s100000"
+
+
+def test_eval_out_stem_zero_shot_appends_on_scenario():
+    assert tcd._eval_out_stem("corridor_peak", "corridor_offpeak", 0.5, 42, 10, 100000) == \
+        "logs/eval_idqn_corridor_peak_lam05_seed42_mg10_s100000_on_corridor_offpeak"
+
+
+def test_evaluate_eval_scenario_defaults_to_none():
+    import inspect
+    sig = inspect.signature(tcd.evaluate)
+    assert "eval_scenario" in sig.parameters
+    assert sig.parameters["eval_scenario"].default is None

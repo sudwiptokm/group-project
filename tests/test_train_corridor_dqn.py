@@ -79,3 +79,16 @@ def test_idqn_trains_and_evaluates(monkeypatch):
     import pandas as pd
     df = pd.read_csv(csv)
     assert df["system_mean_speed"].mean() > 0
+
+
+@pytest.mark.skipif(not os.environ.get("SUMO_HOME"), reason="SUMO_HOME not set")
+def test_idqn_zero_shot_eval_runs_on_different_scenario(monkeypatch):
+    monkeypatch.setenv("EPISODE_SECONDS", "200")
+    tcd.train("corridor_peak", lam=0.5, seed=1, steps=600, min_green=10)
+    csv = tcd.evaluate("corridor_peak", lam=0.5, seed=1, min_green=10, steps=600,
+                       eval_scenario="corridor_offpeak")
+    assert "_on_corridor_offpeak" in csv
+    assert os.path.exists(csv)
+    import pandas as pd
+    df = pd.read_csv(csv)
+    assert df["system_mean_speed"].mean() > 0

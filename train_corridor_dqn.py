@@ -153,19 +153,41 @@ def train(scenario: str, lam: float, seed: int, steps: int, min_green: int) -> d
     return paths
 
 
+def _eval_out_stem(scenario: str, eval_scenario: str, lam: float, seed: int,
+                   min_green: int, steps: int) -> str:
+    """Eval CSV path stem. When eval_scenario differs from the checkpoint's
+    training scenario (SP6 zero-shot generalization eval), '_on_<eval_scenario>'
+    is appended so a zero-shot run's output can never collide with or be
+    mistaken for an in-distribution one -- same discipline compare.py's
+    _warn_mixed_greens/_warn_mixed_min_greens enforce for other run-identity
+    fragments (env_common.py's docstring convention: every optional fragment
+    sits after seed<n>)."""
+    tag = _tag(scenario, lam, seed, min_green, steps)
+    if eval_scenario != scenario:
+        return f"logs/eval_idqn_{tag}_on_{eval_scenario}"
+    return f"logs/eval_idqn_{tag}"
+
+
 def evaluate(scenario: str, lam: float, seed: int, min_green: int, steps: int,
-            tripinfo: bool = False) -> str:
+            tripinfo: bool = False, eval_scenario: str = None) -> str:
     """Run all 3 agents' greedy policies for one episode, writing one eval
     CSV in the SafetyLoggingEnv format so compare.py reads it as `idqn`. With
     tripinfo=True also writes the per-trip XML analysis/idqn_sweep.py reduces.
 
     Loads each agent's checkpoint by reconstructing its path from _model_path
     -- callers never pass paths directly, so train() and evaluate() can never
-    disagree about where a checkpoint lives."""
+    disagree about where a checkpoint lives.
+
+    eval_scenario, if given, evaluates the checkpoint's greedy policy against
+    a DIFFERENT demand scenario than it was trained on -- SP6's zero-shot
+    generalization eval (docs/superpowers/specs/2026-08-22-sp6-idqn-demand-shift-design.md).
+    Defaults to `scenario` (today's in-distribution behaviour, unchanged): the
+    checkpoint is always looked up under `scenario`, but the env runs whichever
+    scenario `eval_scenario` names."""
     os.makedirs("logs", exist_ok=True)
-    tag = _tag(scenario, lam, seed, min_green, steps)
-    out_csv = f"logs/eval_idqn_{tag}"
-    env = make_corridor_env(seed=seed, scenario=scenario, lam=lam,
+    eval_scenario = eval_scenario or scenario
+    out_csv = _eval_out_stem(scenario, eval_scenario, lam, seed, min_green, steps)
+    env = make_corridor_env(seed=seed, scenario=eval_scenario, lam=lam,
                             min_green=min_green, out_csv=out_csv, tripinfo=tripinfo)
     ids = env.ts_ids
     obs_dim, act_dim = _obs_act_dims(env)
@@ -190,7 +212,7 @@ def evaluate(scenario: str, lam: float, seed: int, min_green: int, steps: int,
         done = dones["__all__"]
     env.save_csv(env.out_csv_name, env.episode)
     env.close()
-    out = f"logs/eval_idqn_{tag}_conn{env.label}_ep{env.episode}.csv"
+    out = f"{out_csv}_conn{env.label}_ep{env.episode}.csv"
     print(f"idqn eval written: {out}")
     return out
 
@@ -203,6 +225,9 @@ if __name__ == "__main__":
                    choices=list(CORRIDOR_SCENARIOS))
     p.add_argument("--lam", type=float, default=0.5)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--eval-scenario", default=None, choices=list(CORRIDOR_SCENARIOS),
+                   help="demand scenario to evaluate on, if different from "
+                        "--scenario (zero-shot; defaults to --scenario)")
     p.add_argument("--steps", type=int, default=100_000)
     p.add_argument("--min-green", type=int, required=True,
                    help="explicit -- this script never falls back to $MIN_GREEN/DEFAULT_MIN_GREEN")
@@ -213,6 +238,6 @@ if __name__ == "__main__":
     args = p.parse_args()
     if args.eval:
         evaluate(args.scenario, args.lam, args.seed, args.min_green, args.steps,
-                 tripinfo=args.tripinfo)
+                 tripinfo=args.tripinfo, eval_scenario=args.eval_scenario)
     else:
         train(args.scenario, args.lam, args.seed, args.steps, args.min_green)
