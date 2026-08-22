@@ -15,6 +15,7 @@ import os
 import numpy as np
 import torch
 
+import corridor_baseline as cb
 import dqn_core as dc
 from algos import ALGOS
 from env_common import CORRIDOR_SCENARIOS, make_corridor_env
@@ -154,22 +155,25 @@ def train(scenario: str, lam: float, seed: int, steps: int, min_green: int) -> d
 
 
 def _eval_out_stem(scenario: str, eval_scenario: str, lam: float, seed: int,
-                   min_green: int, steps: int) -> str:
-    """Eval CSV path stem. When eval_scenario differs from the checkpoint's
-    training scenario (SP6 zero-shot generalization eval), '_on_<eval_scenario>'
-    is appended so a zero-shot run's output can never collide with or be
-    mistaken for an in-distribution one -- same discipline compare.py's
-    _warn_mixed_greens/_warn_mixed_min_greens enforce for other run-identity
-    fragments (env_common.py's docstring convention: every optional fragment
-    sits after seed<n>)."""
+                   min_green: int, steps: int, incident: bool = False) -> str:
+    """Eval CSV path stem. '_on_<eval_scenario>' is appended when
+    eval_scenario differs from the checkpoint's training scenario (SP6
+    zero-shot). '_incident' is appended when the SP7 lane closure was applied
+    (docs/superpowers/specs/2026-08-22-sp7-corridor-incident-design.md) --
+    both fragments can combine, since SP7's incident eval is itself zero-shot
+    against the corridor_peak checkpoints."""
     tag = _tag(scenario, lam, seed, min_green, steps)
+    stem = f"logs/eval_idqn_{tag}"
     if eval_scenario != scenario:
-        return f"logs/eval_idqn_{tag}_on_{eval_scenario}"
-    return f"logs/eval_idqn_{tag}"
+        stem += f"_on_{eval_scenario}"
+    if incident:
+        stem += "_incident"
+    return stem
 
 
 def evaluate(scenario: str, lam: float, seed: int, min_green: int, steps: int,
-            tripinfo: bool = False, eval_scenario: str = None) -> str:
+            tripinfo: bool = False, eval_scenario: str = None,
+            incident: bool = False) -> str:
     """Run all 3 agents' greedy policies for one episode, writing one eval
     CSV in the SafetyLoggingEnv format so compare.py reads it as `idqn`. With
     tripinfo=True also writes the per-trip XML analysis/idqn_sweep.py reduces.
@@ -183,12 +187,17 @@ def evaluate(scenario: str, lam: float, seed: int, min_green: int, steps: int,
     generalization eval (docs/superpowers/specs/2026-08-22-sp6-idqn-demand-shift-design.md).
     Defaults to `scenario` (today's in-distribution behaviour, unchanged): the
     checkpoint is always looked up under `scenario`, but the env runs whichever
-    scenario `eval_scenario` names."""
+    scenario `eval_scenario` names.
+
+    incident=True applies corridor_baseline.INCIDENT to the eval env -- the
+    same fixed lane closure every controller in the SP7 comparison faces."""
     os.makedirs("logs", exist_ok=True)
     eval_scenario = eval_scenario or scenario
-    out_csv = _eval_out_stem(scenario, eval_scenario, lam, seed, min_green, steps)
+    out_csv = _eval_out_stem(scenario, eval_scenario, lam, seed, min_green, steps,
+                             incident=incident)
     env = make_corridor_env(seed=seed, scenario=eval_scenario, lam=lam,
-                            min_green=min_green, out_csv=out_csv, tripinfo=tripinfo)
+                            min_green=min_green, out_csv=out_csv, tripinfo=tripinfo,
+                            incident=cb.INCIDENT if incident else None)
     ids = env.ts_ids
     obs_dim, act_dim = _obs_act_dims(env)
     policies = {}
@@ -235,9 +244,12 @@ if __name__ == "__main__":
                    help="evaluate existing checkpoints instead of training")
     p.add_argument("--tripinfo", action="store_true",
                    help="also write the per-trip XML (only meaningful with --eval)")
+    p.add_argument("--incident", action="store_true",
+                   help=f"apply the SP7 lane-closure incident ({cb.INCIDENT})")
     args = p.parse_args()
     if args.eval:
         evaluate(args.scenario, args.lam, args.seed, args.min_green, args.steps,
-                 tripinfo=args.tripinfo, eval_scenario=args.eval_scenario)
+                 tripinfo=args.tripinfo, eval_scenario=args.eval_scenario,
+                 incident=args.incident)
     else:
         train(args.scenario, args.lam, args.seed, args.steps, args.min_green)
