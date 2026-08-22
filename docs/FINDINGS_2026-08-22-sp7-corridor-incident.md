@@ -205,3 +205,14 @@ depending on the seed.
   spec's own deferred-decisions list already names.
 - Only `corridor_peak` was tested (spec's own scope: one variable under
   test at a time, no stacking with the demand-shift scenarios from SP6).
+- Every Δ reported above is a **whole-episode** mean (`trip_time_loss_mean`
+  over all trips in the 3600s episode), but the incident only lasts 900s —
+  a quarter of the episode. Only roughly a quarter of trips are exposed to
+  the closure at all, so the reported Δ is diluted by roughly that same
+  ~4x ratio: the true per-affected-trip degradation among trips that
+  actually crossed the corridor during the closure is correspondingly
+  larger than the headline number suggests. The spec's own §Scope section
+  asked for both an incident-window number and a whole-episode number in
+  the comparison table; only the whole-episode number shipped here — that
+  in-window column was never produced and would need per-trip
+  depart/arrival filtering logic this plan didn't build.
