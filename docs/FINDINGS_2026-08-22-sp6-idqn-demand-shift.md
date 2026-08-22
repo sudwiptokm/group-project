@@ -77,12 +77,23 @@ on corridor_tidal, +14.31s on corridor_skew, +13.06s on corridor_peak** — flat
 to within about 1.5s across all four scenarios, each well inside its own
 seed-to-seed sd (0.46-3.09s). `max_pressure` is not measurably worse off on
 `corridor_offpeak` than anywhere else. IDQN is the only controller whose
-relative disadvantage moves at all across scenarios, and it moves only on
+relative disadvantage moves materially across scenarios, and it moves only on
 `corridor_offpeak`, from +3s to +11s. This is the signature of an
 IDQN-specific generalization failure, not "this scenario is harder for
 everyone" — the policy overfit to `corridor_peak`'s demand *magnitude* in a
 way that doesn't show up when only the demand's *shape* changes
 (`corridor_tidal`/`corridor_skew`).
+
+A second, independent line of evidence points the same way: on
+`corridor_offpeak`, `green_wave`'s own delay actually *improves* relative to
+`corridor_peak` (13.47s -> 11.74s, demand dropping to a third makes its job
+easier), while IDQN's absolute delay *rises* on that same shifted demand
+(16.56s -> 23.00s). The same demand shift that makes the problem easier for
+the demand-blind baseline makes it harder for the policy that trained on the
+other demand magnitude — a cleaner signal than the `max_pressure` cross-check
+alone, since `max_pressure` sits delay-saturated at 26-28s across all four
+scenarios and is a low-sensitivity instrument for "is this scenario harder
+for everyone."
 
 ## Verdict
 
