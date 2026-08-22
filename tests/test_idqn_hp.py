@@ -1,4 +1,10 @@
 """Unit tests for train_corridor_dqn.py's pure-logic pieces (no SUMO)."""
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import numpy as np
+
+import dqn_core as dc
 import train_corridor_dqn as tcd
 from algos import ALGOS
 
@@ -63,3 +69,57 @@ def test_evaluate_eval_scenario_defaults_to_none():
     sig = inspect.signature(tcd.evaluate)
     assert "eval_scenario" in sig.parameters
     assert sig.parameters["eval_scenario"].default is None
+
+
+def test_evaluate_routes_eval_scenario_to_env_and_checkpoint_scenario_to_load(monkeypatch):
+    """Pins that eval_scenario actually reaches make_corridor_env (the env the
+    episode runs in), while the checkpoint scenario -- NOT eval_scenario --
+    still governs which checkpoint file is loaded. The existing zero-shot
+    smoke test (tests/test_train_corridor_dqn.py) only checks the output
+    filename; it would pass even if eval_scenario were threaded into the
+    filename but not the env, silently still running corridor_peak demand
+    under a corridor_offpeak-looking name. No SUMO required: make_corridor_env
+    and torch.load are both mocked, and the mocked episode ends after exactly
+    one env.step() call."""
+    obs_dim, act_dim, hidden = 3, 2, (4,)
+    ts_ids = list(tcd.CORRIDOR_TS_IDS)
+
+    def _obs():
+        return {i: np.zeros(obs_dim, dtype=np.float32) for i in ts_ids}
+
+    fake_env = SimpleNamespace(
+        ts_ids=ts_ids,
+        out_csv_name="fake_stem",
+        episode=1,
+        label=0,
+        observation_spaces=lambda tid: SimpleNamespace(shape=(obs_dim,)),
+        action_spaces=lambda tid: SimpleNamespace(n=act_dim),
+        reset=lambda: _obs(),
+        # dones["__all__"]=True immediately -- the evaluate() loop exits after
+        # this one env.step() call, so the RL loop itself is never exercised.
+        step=lambda actions: (_obs(), {i: 0.0 for i in ts_ids}, {"__all__": True}, {}),
+        save_csv=lambda name, episode: None,
+        close=lambda: None,
+    )
+    make_env_mock = MagicMock(return_value=fake_env)
+    monkeypatch.setattr(tcd, "make_corridor_env", make_env_mock)
+
+    # a real, small QNetwork's state_dict so q_net.load_state_dict succeeds
+    real_net = dc.QNetwork(obs_dim, act_dim, hidden=hidden)
+    ckpt = {"state_dict": real_net.state_dict(), "hidden": hidden}
+    torch_load_mock = MagicMock(return_value=ckpt)
+    monkeypatch.setattr(tcd.torch, "load", torch_load_mock)
+
+    tcd.evaluate("corridor_peak", lam=0.5, seed=42, min_green=10, steps=100000,
+                 eval_scenario="corridor_offpeak")
+
+    # the episode must run on the EVAL scenario, not the checkpoint's training
+    # scenario
+    assert make_env_mock.call_args.kwargs["scenario"] == "corridor_offpeak"
+
+    # but each checkpoint must still be loaded from its TRAINING scenario
+    assert torch_load_mock.call_count == len(ts_ids)
+    for call in torch_load_mock.call_args_list:
+        ckpt_path = call.args[0]
+        assert "corridor_peak" in ckpt_path
+        assert "corridor_offpeak" not in ckpt_path

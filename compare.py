@@ -170,6 +170,33 @@ def _warn_mixed_min_greens(df: pd.DataFrame, scenario: str, entity: str) -> None
               "to 60).")
 
 
+_ON_SCENARIO_TAG = re.compile(r"_on_(corridor_\w+?)_conn")
+
+
+def _warn_mixed_eval_scenarios(df: pd.DataFrame, scenario: str, entity: str) -> None:
+    """Refuse to silently average zero-shot runs into an in-distribution row.
+
+    The glob in `_run_means` matches on the CHECKPOINT's training scenario
+    (embedded early in the filename, before seed<n>), not on what demand the
+    run was actually evaluated against. `train_corridor_dqn._eval_out_stem`
+    appends `_on_<eval_scenario>` only when a zero-shot eval's eval_scenario
+    differs from its checkpoint's training scenario (SP6), so a checkpoint
+    trained on `corridor_peak` but evaluated on `corridor_offpeak` still
+    matches the `corridor_peak` glob here. Averaging it into that row mixes
+    genuinely different demand into an in-distribution comparison -- the same
+    class of confound `_warn_mixed_greens`/`_warn_mixed_min_greens` already
+    guard against for green duration and min_green.
+    """
+    if df.empty or "run" not in df:
+        return
+    mixed = sorted(r for r in df["run"] if _ON_SCENARIO_TAG.search(r))
+    if mixed:
+        print(f"  [!] {scenario}/{entity}: {len(mixed)} run(s) carry an "
+              f"'_on_<scenario>' fragment -- evaluated on a DIFFERENT demand "
+              f"scenario than {scenario}, not in-distribution for this row: "
+              f"{mixed}")
+
+
 def _departed(scenario: str, horizon: float):
     """Demand the scenario asks for; None if its route file is missing."""
     route = SCENARIO_ROUTES.get(scenario)
@@ -225,9 +252,11 @@ def main():
         for lam in corridor_lambdas:
             df = _run_means(args.logs, "ippo", scenario, lam=lam)
             if not df.empty:
+                _warn_mixed_eval_scenarios(df, scenario, f"ippo/lam{lam}")
                 rows.append(_summarise(df, "ippo", scenario, lam))
             df = _run_means(args.logs, "idqn", scenario, lam=lam)
             if not df.empty:
+                _warn_mixed_eval_scenarios(df, scenario, f"idqn/lam{lam}")
                 rows.append(_summarise(df, "idqn", scenario, lam))
 
     if not rows:
