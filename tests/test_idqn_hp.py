@@ -71,6 +71,25 @@ def test_evaluate_eval_scenario_defaults_to_none():
     assert sig.parameters["eval_scenario"].default is None
 
 
+def test_eval_out_stem_incident_appends_suffix():
+    assert tcd._eval_out_stem("corridor_peak", "corridor_peak", 0.5, 42, 10, 100000,
+                              incident=True) == \
+        "logs/eval_idqn_corridor_peak_lam05_seed42_mg10_s100000_incident"
+
+
+def test_eval_out_stem_incident_and_zero_shot_combine():
+    assert tcd._eval_out_stem("corridor_peak", "corridor_offpeak", 0.5, 42, 10, 100000,
+                              incident=True) == \
+        "logs/eval_idqn_corridor_peak_lam05_seed42_mg10_s100000_on_corridor_offpeak_incident"
+
+
+def test_evaluate_incident_defaults_to_false():
+    import inspect
+    sig = inspect.signature(tcd.evaluate)
+    assert "incident" in sig.parameters
+    assert sig.parameters["incident"].default is False
+
+
 def test_evaluate_routes_eval_scenario_to_env_and_checkpoint_scenario_to_load(monkeypatch):
     """Pins that eval_scenario actually reaches make_corridor_env (the env the
     episode runs in), while the checkpoint scenario -- NOT eval_scenario --
