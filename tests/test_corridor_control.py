@@ -74,3 +74,27 @@ class TestPhasePressure:
 
     def test_no_movements_is_zero_pressure(self):
         assert cc.phase_pressure([], self._queues({})) == 0
+
+
+def test_incident_lane_id_format():
+    assert cc.incident_lane_id("C1_C2", 0) == "C1_C2_0"
+    assert cc.incident_lane_id("C1_C2", 1) == "C1_C2_1"
+
+
+def test_incident_action_applies_at_start():
+    assert cc.incident_action(t=1799.0, start_s=1800.0, duration_s=900.0, applied=False) is None
+    assert cc.incident_action(t=1800.0, start_s=1800.0, duration_s=900.0, applied=False) == "apply"
+    assert cc.incident_action(t=2000.0, start_s=1800.0, duration_s=900.0, applied=False) == "apply"
+
+
+def test_incident_action_reverts_after_duration():
+    assert cc.incident_action(t=2699.0, start_s=1800.0, duration_s=900.0, applied=True) is None
+    assert cc.incident_action(t=2700.0, start_s=1800.0, duration_s=900.0, applied=True) == "revert"
+    assert cc.incident_action(t=3000.0, start_s=1800.0, duration_s=900.0, applied=True) == "revert"
+
+
+def test_incident_action_noop_once_settled():
+    # already applied and still inside the window -> nothing to do
+    assert cc.incident_action(t=2000.0, start_s=1800.0, duration_s=900.0, applied=True) is None
+    # already reverted and past the window -> nothing to do
+    assert cc.incident_action(t=3000.0, start_s=1800.0, duration_s=900.0, applied=False) is None
