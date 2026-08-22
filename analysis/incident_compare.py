@@ -30,12 +30,6 @@ STEPS = 100_000
 
 os.environ.setdefault("TIME_TO_TELEPORT", "300")
 
-# SP5's in-distribution idqn/corridor_peak/no-incident mean delay -- idqn has
-# no row in analysis/corridor_sweep.csv (that file only holds the non-RL
-# baselines), so its no-incident reference is this disclosed constant instead
-# of a CSV lookup (docs/FINDINGS_2026-08-21-sp5-idqn-vs-corrected-bar.md).
-INDIST_IDQN_DELAY = 16.56
-
 
 def run_baseline(controller: str, seed: int, force: bool = False) -> dict:
     """One incident-eval episode for a non-RL baseline. Resumable."""
@@ -92,11 +86,14 @@ def no_incident_for(controller: str, seed: int) -> float:
     is confirmed bimodal across seeds (seeds 42/44 ~28-29s, seed 43 ~21.9s
     per corridor_sweep.csv), so a mean would misrepresent any individual
     seed's baseline. idqn isn't in corridor_sweep.csv (that file only holds
-    the non-RL baselines), so it uses the disclosed constant
-    INDIST_IDQN_DELAY for every seed -- the one case where a scalar shared
-    across seeds is correct and intentional."""
+    the non-RL baselines), so its no-incident baseline is read straight from
+    its own per-seed no-incident tripinfo XML instead (SP5 checkpoints,
+    `logs/eval_idqn_corridor_peak_lam05_seed{42,43,44}_mg10_s100000_tripinfo.xml`)
+    -- same seed-matching discipline as green_wave/max_pressure above, not a
+    scalar shared across seeds."""
     if controller == "idqn":
-        return INDIST_IDQN_DELAY
+        stem = tcd._eval_out_stem(SCENARIO, SCENARIO, LAM, seed, MIN_GREEN, STEPS)
+        return reduce_tripinfo(tripinfo_path(stem))["trip_time_loss_mean"]
     df = pd.read_csv(CORRIDOR_SWEEP_CSV)
     rows = df[(df["controller"] == controller) & (df["scenario"] == SCENARIO) &
               (df["min_green"] == MIN_GREEN) & (df["seed"] == seed)]
