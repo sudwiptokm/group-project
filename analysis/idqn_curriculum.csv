@@ -1,0 +1,7 @@
+scenario,seed,min_green,delay_per_trip,trips
+corridor_offpeak,42,10,21.208371134020624,970
+corridor_offpeak,43,10,20.53618485742377,1017
+corridor_offpeak,44,10,21.712672858617147,969
+corridor_peak,42,10,17.07587814840026,2938
+corridor_peak,43,10,16.674046107584314,2993
+corridor_peak,44,10,16.95535569105692,2952

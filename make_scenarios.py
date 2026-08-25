@@ -94,6 +94,28 @@ CORRIDOR_FACTORS = {
     "corridor_offpeak.rou.xml": 0.5,
 }
 
+# Intermediate demand-MAGNITUDE points between corridor_offpeak (0.5x) and
+# corridor_peak (1.5x), for SP11's curriculum IDQN training
+# (docs/FINDINGS_2026-08-22-sp11-offpeak-curriculum.md). SP6 found IDQN's
+# gap to green_wave more than triples on corridor_offpeak when the checkpoint
+# only ever trained on corridor_peak's magnitude -- these three files, plus
+# the existing peak/offpeak endpoints, give a 5-point magnitude curriculum
+# (0.5/0.75/1.0/1.25/1.5x) so a curriculum-trained checkpoint sees demand
+# magnitudes spanning the whole peak-offpeak range during training, not just
+# one end of it. Same shape as corridor_peak/corridor_offpeak (uniform,
+# stationary, symmetric arterial+cross-street scaling of corridor.rou.xml) --
+# only the magnitude varies, deliberately, so any generalization difference
+# is attributable to seeing a range of magnitudes rather than a structural
+# change. Not registered in env_common.SCENARIO_ROUTES/CORRIDOR_SCENARIOS:
+# these are training-curriculum inputs, not scenarios anyone evaluates a
+# baseline controller on -- train_corridor_dqn.train_curriculum references
+# the filenames directly.
+CORRIDOR_CURRICULUM_FACTORS = {
+    "corridor_curric_lo.rou.xml": 0.75,
+    "corridor_curric_mid.rou.xml": 1.0,
+    "corridor_curric_hi.rou.xml": 1.25,
+}
+
 CORRIDOR_TIDAL_DST = "corridor_tidal.rou.xml"
 EPISODE_SECONDS = 3600.0
 TIDAL_SWITCH_S = 1800.0
@@ -268,6 +290,8 @@ if __name__ == "__main__":
     for dst, factor in FACTORS.items():
         scale_file(SRC, dst, factor)
     for dst, factor in CORRIDOR_FACTORS.items():
+        scale_file(CORRIDOR_SRC, dst, factor, stochastic=True)
+    for dst, factor in CORRIDOR_CURRICULUM_FACTORS.items():
         scale_file(CORRIDOR_SRC, dst, factor, stochastic=True)
     write_tidal(CORRIDOR_SRC, CORRIDOR_TIDAL_DST)
     write_skew(CORRIDOR_SRC, CORRIDOR_SKEW_DST)
