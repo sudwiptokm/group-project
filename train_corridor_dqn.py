@@ -61,30 +61,78 @@ def _obs_act_dims(env):
     return env.observation_spaces(tid).shape[0], env.action_spaces(tid).n
 
 
-def _tag(scenario: str, lam: float, seed: int, min_green: int, steps: int) -> str:
+def _tag(scenario: str, lam: float, seed: int, min_green: int, steps: int,
+        variant: str = "") -> str:
     """Filename tag shared by train (models) and evaluate (eval CSV), same
     convention as train_corridor._tag -- see that function's docstring for why
-    min_green and steps are both folded in."""
-    return f"{scenario}_lam{str(lam).replace('.', '')}_seed{seed}_mg{min_green}_s{steps}"
+    min_green and steps are both folded in.
+
+    `variant` (SP12) appends one more fragment, e.g. "incaware", so a
+    checkpoint trained by a different curriculum than the plain scenario
+    sweep (same scenario/lam/seed/min_green/steps otherwise) never collides
+    with the existing file. Defaults to "" -- every pre-SP12 call site is
+    unaffected."""
+    tag = f"{scenario}_lam{str(lam).replace('.', '')}_seed{seed}_mg{min_green}_s{steps}"
+    if variant:
+        tag += f"_{variant}"
+    return tag
 
 
 def _model_path(agent_id: str, scenario: str, lam: float, seed: int,
-                min_green: int, steps: int) -> str:
+                min_green: int, steps: int, variant: str = "") -> str:
     """Where one agent's checkpoint lives. Unlike train_corridor.py's single
     shared-policy path, IDQN has one file per agent -- agent_id is folded in
     right after the algo name so the 3 files for one run sort together and
     never collide with each other or with a different run's tag."""
-    return f"models/idqn_{agent_id}_{_tag(scenario, lam, seed, min_green, steps)}.pt"
+    return f"models/idqn_{agent_id}_{_tag(scenario, lam, seed, min_green, steps, variant=variant)}.pt"
 
 
-def train(scenario: str, lam: float, seed: int, steps: int, min_green: int) -> dict:
-    """Train 3 fully independent DQN agents. Returns {ts_id: model_path}."""
+def train(scenario: str, lam: float, seed: int, steps: int, min_green: int,
+         incident: tuple = None, incident_prob: float = 0.0,
+         variant: str = "") -> dict:
+    """Train 3 fully independent DQN agents. Returns {ts_id: model_path}.
+
+    incident/incident_prob (SP12, docs/superpowers/specs/2026-08-22-sp7-
+    corridor-incident-design.md's own deferred-decisions list): if
+    `incident` is given and `incident_prob` > 0, each training episode
+    independently includes that incident (the same corridor_baseline.INCIDENT
+    lane closure SP7 evaluates zero-shot, applied via env.set_incident() the
+    same way SP7's eval applies it via make_corridor_env) with probability
+    `incident_prob`, decided by the same seeded `rng` this loop already uses
+    for epsilon-greedy exploration -- reproducible per seed. A mix rather
+    than incident-every-episode, so the policy sees both the ordinary
+    no-incident dynamics it must still handle well and the disrupted ones,
+    instead of overfitting to "an incident always happens." Defaults
+    (incident=None, incident_prob=0.0) reproduce the pre-SP12 training path
+    exactly: `incident_prob > 0` is checked before `rng.random()` is ever
+    called (short-circuit `and`), so the default case draws nothing extra
+    from `rng` and every existing call site/test is bit-for-bit unaffected.
+
+    Limitation, disclosed rather than engineered around: SP7's incident is
+    one fixed, deterministic scenario (same edge, same start/duration every
+    time it fires -- see corridor_baseline.INCIDENT). This curriculum reuses
+    that exact spec unmodified on every incident episode; it does not
+    randomize timing/location/severity across episodes, so a policy trained
+    this way could in principle learn to key off the wall-clock time the
+    incident always starts at, rather than reacting to the traffic pattern
+    it causes. Not addressed here -- see the SP12 findings doc.
+
+    variant (SP12): appended to _tag()'s filename fragment (see _tag) so an
+    incident-aware checkpoint never collides with the existing plain
+    `corridor_peak`-trained files this same (scenario, lam, seed, min_green,
+    steps) combination already names.
+    """
     hp = _hp()
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     env = make_corridor_env(seed=seed, scenario=scenario, lam=lam, min_green=min_green)
     ids = env.ts_ids
     obs_dim, act_dim = _obs_act_dims(env)
+
+    def _episode_incident():
+        if incident is not None and incident_prob > 0 and rng.random() < incident_prob:
+            return incident
+        return None
 
     agents = {}
     for i in ids:
@@ -100,6 +148,10 @@ def train(scenario: str, lam: float, seed: int, steps: int, min_green: int) -> d
                                       hp["exploration_final_eps"]),
         }
 
+    # SP12: decide the first episode's incident status before the first
+    # reset() too, not just on every subsequent one below -- otherwise
+    # episode 0 could never be an incident episode.
+    env.set_incident(_episode_incident())
     obs = env.reset()
     for t in range(steps):
         actions = {}
@@ -123,6 +175,10 @@ def train(scenario: str, lam: float, seed: int, steps: int, min_green: int) -> d
                                     done_all)
         obs = nobs
         if done_all:
+            # SP12: re-roll whether the NEXT episode gets the incident before
+            # resetting -- env.set_incident()'s own docstring explains why
+            # this ordering (before reset(), not after) is required.
+            env.set_incident(_episode_incident())
             obs = env.reset()
 
         if t >= hp["learning_starts"] and t % hp["train_freq"] == 0:
@@ -146,7 +202,7 @@ def train(scenario: str, lam: float, seed: int, steps: int, min_green: int) -> d
     os.makedirs("models", exist_ok=True)
     paths = {}
     for i in ids:
-        path = _model_path(i, scenario, lam, seed, min_green, steps)
+        path = _model_path(i, scenario, lam, seed, min_green, steps, variant=variant)
         torch.save({"state_dict": agents[i]["q"].state_dict(), "hidden": hp["hidden"]},
                    path)
         paths[i] = path
@@ -156,7 +212,7 @@ def train(scenario: str, lam: float, seed: int, steps: int, min_green: int) -> d
 
 def _eval_out_stem(scenario: str, eval_scenario: str, lam: float, seed: int,
                    min_green: int, steps: int, incident: bool = False,
-                   net_file: str = "corridor.net.xml") -> str:
+                   net_file: str = "corridor.net.xml", variant: str = "") -> str:
     """Eval CSV path stem. '_on_<eval_scenario>' is appended when
     eval_scenario differs from the checkpoint's training scenario (SP6
     zero-shot). '_incident' is appended when the SP7 lane closure was applied
@@ -165,8 +221,10 @@ def _eval_out_stem(scenario: str, eval_scenario: str, lam: float, seed: int,
     against the corridor_peak checkpoints. '_net<label>' is appended when
     net_file isn't the regular corridor.net.xml geometry -- same
     never-silently-glob-together discipline, and same reason
-    corridor_baseline.run() tags its own non-default-net CSVs this way."""
-    tag = _tag(scenario, lam, seed, min_green, steps)
+    corridor_baseline.run() tags its own non-default-net CSVs this way.
+    `variant` (SP12) is folded into the tag by _tag() itself -- see that
+    function's docstring."""
+    tag = _tag(scenario, lam, seed, min_green, steps, variant=variant)
     stem = f"logs/eval_idqn_{tag}"
     if eval_scenario != scenario:
         stem += f"_on_{eval_scenario}"
@@ -180,7 +238,8 @@ def _eval_out_stem(scenario: str, eval_scenario: str, lam: float, seed: int,
 
 def evaluate(scenario: str, lam: float, seed: int, min_green: int, steps: int,
             tripinfo: bool = False, eval_scenario: str = None,
-            incident: bool = False, net_file: str = "corridor.net.xml") -> str:
+            incident: bool = False, net_file: str = "corridor.net.xml",
+            variant: str = "") -> str:
     """Run all 3 agents' greedy policies for one episode, writing one eval
     CSV in the SafetyLoggingEnv format so compare.py reads it as `idqn`. With
     tripinfo=True also writes the per-trip XML analysis/idqn_sweep.py reduces.
@@ -202,11 +261,14 @@ def evaluate(scenario: str, lam: float, seed: int, min_green: int, steps: int,
     net_file, if given, runs the checkpoint's greedy policy on a DIFFERENT
     network geometry than it trained on (zero-shot, same spirit as
     eval_scenario) -- the checkpoint is still looked up under `scenario`'s
-    regular-net path, only the env's geometry changes."""
+    regular-net path, only the env's geometry changes.
+
+    variant (SP12) must match whatever `train()` was called with to produce
+    the checkpoint being loaded here -- see _tag()."""
     os.makedirs("logs", exist_ok=True)
     eval_scenario = eval_scenario or scenario
     out_csv = _eval_out_stem(scenario, eval_scenario, lam, seed, min_green, steps,
-                             incident=incident, net_file=net_file)
+                             incident=incident, net_file=net_file, variant=variant)
     env = make_corridor_env(seed=seed, scenario=eval_scenario, lam=lam,
                             min_green=min_green, out_csv=out_csv, tripinfo=tripinfo,
                             incident=cb.INCIDENT if incident else None,
@@ -215,7 +277,8 @@ def evaluate(scenario: str, lam: float, seed: int, min_green: int, steps: int,
     obs_dim, act_dim = _obs_act_dims(env)
     policies = {}
     for i in ids:
-        ckpt = torch.load(_model_path(i, scenario, lam, seed, min_green, steps),
+        ckpt = torch.load(_model_path(i, scenario, lam, seed, min_green, steps,
+                                      variant=variant),
                           weights_only=True)
         q_net = dc.QNetwork(obs_dim, act_dim, hidden=tuple(ckpt["hidden"]))
         q_net.load_state_dict(ckpt["state_dict"])
@@ -258,11 +321,24 @@ if __name__ == "__main__":
     p.add_argument("--tripinfo", action="store_true",
                    help="also write the per-trip XML (only meaningful with --eval)")
     p.add_argument("--incident", action="store_true",
-                   help=f"apply the SP7 lane-closure incident ({cb.INCIDENT})")
+                   help=f"apply the SP7 lane-closure incident ({cb.INCIDENT}) "
+                        "-- eval path only; see --incident-prob for training")
+    p.add_argument("--incident-prob", type=float, default=0.0,
+                   help="SP12: fraction of TRAINING episodes that include the "
+                        "SP7 lane-closure incident (0.0 = never, the pre-SP12 "
+                        "default; ignored with --eval)")
+    p.add_argument("--variant", default="",
+                   help="SP12: extra filename-tag fragment (see _tag) so a "
+                        "differently-curriculumed checkpoint -- e.g. "
+                        "incident-aware training -- never collides with an "
+                        "existing checkpoint at the same scenario/lam/seed/"
+                        "min_green/steps")
     args = p.parse_args()
     if args.eval:
         evaluate(args.scenario, args.lam, args.seed, args.min_green, args.steps,
                  tripinfo=args.tripinfo, eval_scenario=args.eval_scenario,
-                 incident=args.incident)
+                 incident=args.incident, variant=args.variant)
     else:
-        train(args.scenario, args.lam, args.seed, args.steps, args.min_green)
+        train(args.scenario, args.lam, args.seed, args.steps, args.min_green,
+             incident=cb.INCIDENT if args.incident_prob > 0 else None,
+             incident_prob=args.incident_prob, variant=args.variant)

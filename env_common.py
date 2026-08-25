@@ -398,6 +398,32 @@ class SafetyLoggingEnv(SumoEnvironment):
         self._incident = incident
         self._incident_applied = False
 
+    def set_incident(self, incident: Optional[tuple]) -> None:
+        """Change which incident (if any) applies to the NEXT episode.
+
+        Added for SP12's incident-aware training curriculum
+        (docs/FINDINGS_<date>-sp12-incident-aware-idqn.md), where a single
+        long-lived env instance alternates incident/no-incident episodes
+        across a training run -- the __init__-time `incident` kwarg above
+        only configures one fixed value for the env's whole lifetime, which
+        was fine for SP7's single-episode eval runs but not for a multi-
+        episode training loop.
+
+        Only meaningful to call between episodes (i.e. right before
+        reset()): SumoEnvironment.reset() always calls close() then
+        _start_simulation(), which starts a brand-new SUMO process, so there
+        is no live lane-closure state on the SUMO side to revert here --
+        this just updates the Python-side config this instance's next
+        _sumo_step() incident check will read, and clears
+        `_incident_applied` so a fresh episode with the incident enabled
+        applies it again from scratch (it isn't already "applied" just
+        because a previous episode applied and reverted it). Every existing
+        call site still sets `incident` once at construction and never
+        calls this, so their behaviour is unchanged.
+        """
+        self._incident = incident
+        self._incident_applied = False
+
     def step(self, action):
         # a new decision window begins; the totals read after super().step()
         # cover exactly the seconds this action was in force
