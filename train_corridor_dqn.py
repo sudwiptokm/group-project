@@ -61,6 +61,31 @@ def _obs_act_dims(env):
     return env.observation_spaces(tid).shape[0], env.action_spaces(tid).n
 
 
+# SP11's magnitude-diverse curriculum (docs/FINDINGS_2026-08-22-sp11-offpeak-
+# curriculum.md): 5 demand-magnitude route files spanning corridor_offpeak's
+# 0.5x to corridor_peak's 1.5x (make_scenarios.py's CORRIDOR_CURRICULUM_FACTORS
+# fills the 0.75/1.0/1.25x gaps; the two endpoints reuse the existing peak/
+# offpeak files rather than regenerating them). Raw filenames, not
+# env_common.SCENARIO_ROUTES keys -- train_curriculum swaps env._route to one
+# of these directly, bypassing the scenario-name indirection make_corridor_env
+# normally does, since these files are curriculum-only training inputs, not
+# scenarios anyone runs a baseline controller on.
+CURRICULUM_ROUTES = (
+    "corridor_offpeak.rou.xml",
+    "corridor_curric_lo.rou.xml",
+    "corridor_curric_mid.rou.xml",
+    "corridor_curric_hi.rou.xml",
+    "corridor_peak.rou.xml",
+)
+
+# Pseudo-scenario tag standing in for `scenario` in _tag/_model_path so a
+# curriculum checkpoint's filename can never collide with a fixed-scenario
+# checkpoint's (e.g. seed 42 curriculum vs seed 42 corridor_peak) -- same
+# never-silently-glob-together discipline _eval_out_stem's `_on_`/`_incident`/
+# `_net` fragments follow, just at the scenario field instead of a suffix.
+CURRICULUM_TAG = "corridor_curriculum"
+
+
 def _tag(scenario: str, lam: float, seed: int, min_green: int, steps: int) -> str:
     """Filename tag shared by train (models) and evaluate (eval CSV), same
     convention as train_corridor._tag -- see that function's docstring for why
@@ -151,6 +176,114 @@ def train(scenario: str, lam: float, seed: int, steps: int, min_green: int) -> d
                    path)
         paths[i] = path
     print(f"idqn models saved: {list(paths.values())}")
+    return paths
+
+
+def train_curriculum(lam: float, seed: int, steps: int, min_green: int,
+                     routes: tuple = CURRICULUM_ROUTES,
+                     tag: str = CURRICULUM_TAG) -> dict:
+    """Train 3 fully independent DQN agents across a magnitude-diverse demand
+    curriculum instead of one fixed scenario (SP11).
+
+    Identical to train() in every respect (same hyperparameters, same
+    architecture, same replay/target-update cadence, same total step budget)
+    except for where the demand comes from: at every episode boundary a new
+    route file is drawn uniformly at random from `routes` (seeded by `seed`,
+    an independent RNG stream from the action-selection one so a curriculum
+    run's exploration noise isn't perturbed by how many episodes have elapsed)
+    and swapped into the running env before reset() -- SumoEnvironment's own
+    reset() calls self._start_simulation(), which reads self._route fresh
+    every time (sumo_rl/environment/env.py), so mutating that attribute
+    directly is enough; no env_common.py change is needed and no new env
+    object is constructed mid-run (SUMO already restarts on every reset()
+    regardless, per env_common.make_env's own docstring, so this costs
+    nothing extra over a fixed-scenario run's existing per-episode restart).
+
+    `tag` stands in for `scenario` in the saved checkpoints' filenames
+    (default CURRICULUM_TAG) so these checkpoints can never collide with a
+    fixed-scenario run's, and so evaluate() can look them up zero-shot on any
+    real scenario later exactly the way SP6 evaluated peak-only checkpoints
+    zero-shot on corridor_offpeak/corridor_tidal/corridor_skew -- pass
+    `scenario=tag` there.
+    """
+    hp = _hp()
+    torch.manual_seed(seed)
+    rng = np.random.default_rng(seed)
+    route_rng = np.random.default_rng(seed + 1_000_000)
+    # first episode's magnitude is itself drawn from the curriculum, not
+    # hard-coded to one end of it
+    start_route = routes[int(route_rng.integers(len(routes)))]
+    env = make_corridor_env(seed=seed, scenario="corridor_offpeak", lam=lam,
+                            min_green=min_green)
+    env._route = start_route
+    ids = env.ts_ids
+    obs_dim, act_dim = _obs_act_dims(env)
+
+    agents = {}
+    for i in ids:
+        q_net = dc.QNetwork(obs_dim, act_dim, hidden=hp["hidden"])
+        target_net = dc.QNetwork(obs_dim, act_dim, hidden=hp["hidden"])
+        target_net.load_state_dict(q_net.state_dict())
+        agents[i] = {
+            "q": q_net,
+            "target": target_net,
+            "optim": torch.optim.Adam(q_net.parameters(), lr=hp["lr"]),
+            "buffer": dc.ReplayBuffer(hp["buffer_size"], obs_dim),
+            "eps": dc.EpsilonSchedule(steps, hp["exploration_fraction"],
+                                      hp["exploration_final_eps"]),
+        }
+
+    obs = env.reset()
+    route_counts = {r: 0 for r in routes}
+    route_counts[env._route] += 1
+    for t in range(steps):
+        actions = {}
+        for i in ids:
+            a = agents[i]
+            if rng.random() < a["eps"].value(t):
+                actions[i] = int(rng.integers(act_dim))
+            else:
+                with torch.no_grad():
+                    obs_t = torch.as_tensor(obs[i], dtype=torch.float32).unsqueeze(0)
+                    actions[i] = int(a["q"](obs_t).argmax(dim=-1).item())
+        nobs, rewards, dones, _ = env.step(actions)
+        done_all = float(dones["__all__"])
+        for i in ids:
+            agents[i]["buffer"].add(obs[i], actions[i], float(rewards[i]), nobs[i],
+                                    done_all)
+        obs = nobs
+        if done_all:
+            env._route = routes[int(route_rng.integers(len(routes)))]
+            route_counts[env._route] += 1
+            obs = env.reset()
+
+        if t >= hp["learning_starts"] and t % hp["train_freq"] == 0:
+            for i in ids:
+                a = agents[i]
+                if len(a["buffer"]) < hp["batch_size"]:
+                    continue
+                b_obs, b_act, b_rew, b_nobs, b_done = a["buffer"].sample(
+                    hp["batch_size"], rng)
+                loss, _ = dc.dqn_loss(a["q"], a["target"], b_obs, b_act, b_rew,
+                                      b_nobs, b_done, hp["gamma"])
+                a["optim"].zero_grad()
+                loss.backward()
+                a["optim"].step()
+
+        if t > 0 and t % hp["target_update_interval"] == 0:
+            for i in ids:
+                agents[i]["target"].load_state_dict(agents[i]["q"].state_dict())
+    env.close()
+    print(f"curriculum route counts (episodes): {route_counts}")
+
+    os.makedirs("models", exist_ok=True)
+    paths = {}
+    for i in ids:
+        path = _model_path(i, tag, lam, seed, min_green, steps)
+        torch.save({"state_dict": agents[i]["q"].state_dict(), "hidden": hp["hidden"]},
+                   path)
+        paths[i] = path
+    print(f"idqn curriculum models saved: {list(paths.values())}")
     return paths
 
 
@@ -259,10 +392,18 @@ if __name__ == "__main__":
                    help="also write the per-trip XML (only meaningful with --eval)")
     p.add_argument("--incident", action="store_true",
                    help=f"apply the SP7 lane-closure incident ({cb.INCIDENT})")
+    p.add_argument("--curriculum", action="store_true",
+                   help="SP11: train/evaluate the magnitude-diverse curriculum "
+                        f"checkpoint (CURRICULUM_ROUTES={CURRICULUM_ROUTES}) "
+                        f"tagged '{CURRICULUM_TAG}', instead of a fixed --scenario "
+                        "(--scenario is ignored when this is set)")
     args = p.parse_args()
+    scenario = CURRICULUM_TAG if args.curriculum else args.scenario
     if args.eval:
-        evaluate(args.scenario, args.lam, args.seed, args.min_green, args.steps,
+        evaluate(scenario, args.lam, args.seed, args.min_green, args.steps,
                  tripinfo=args.tripinfo, eval_scenario=args.eval_scenario,
                  incident=args.incident)
+    elif args.curriculum:
+        train_curriculum(args.lam, args.seed, args.steps, args.min_green)
     else:
         train(args.scenario, args.lam, args.seed, args.steps, args.min_green)
