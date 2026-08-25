@@ -107,6 +107,41 @@ def test_idqn_curriculum_trains_across_multiple_routes_and_evaluates(monkeypatch
     csv = tcd.evaluate(tcd.CURRICULUM_TAG, lam=0.5, seed=seed, min_green=10,
                        steps=steps, eval_scenario="corridor_peak")
     assert "_on_corridor_peak" in csv
+def test_idqn_incident_aware_training_writes_distinct_checkpoints_and_evaluates(monkeypatch):
+    """SP12 smoke test: train() with incident_prob>0 must (a) not crash, (b)
+    actually exercise the incident code path at least once across a short
+    run, and (c) save/load checkpoints under `variant` without colliding
+    with a plain (incident_prob=0) run at the same scenario/lam/seed.
+
+    EPISODE_SECONDS is shrunk to 60s so the test is fast; the incident tuple
+    below is scaled down to fit inside that window (start=20s, duration=20s)
+    instead of SP7's real (1800s, 900s) -- this test is only pinning that
+    the training-time incident plumbing (env.set_incident + _sumo_step's
+    existing apply/revert logic) runs correctly at some timing, not
+    reproducing SP7's exact scenario (that's covered by
+    test_incident_closes_and_reopens_lane and the real SP12 training run).
+    """
+    monkeypatch.setenv("EPISODE_SECONDS", "60")
+    steps = 5200
+    seed = 0
+    scaled_incident = ("C1_C2", 0, 20.0, 20.0)
+
+    paths = tcd.train("corridor_offpeak", lam=0.5, seed=seed, steps=steps,
+                      min_green=10, incident=scaled_incident, incident_prob=1.0,
+                      variant="incaware")
+    for p in paths.values():
+        assert os.path.exists(p)
+        assert "incaware" in p
+
+    # must not collide with the plain (no incident) checkpoint path for the
+    # same scenario/lam/seed/min_green/steps
+    plain_path = tcd._model_path(tcd.CORRIDOR_TS_IDS[0], "corridor_offpeak", 0.5,
+                                 seed, 10, steps)
+    assert plain_path not in paths.values()
+
+    csv = tcd.evaluate("corridor_offpeak", lam=0.5, seed=seed, min_green=10,
+                       steps=steps, variant="incaware")
+    assert "incaware" in csv
     assert os.path.exists(csv)
     import pandas as pd
     df = pd.read_csv(csv)

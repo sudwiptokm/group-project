@@ -90,6 +90,72 @@ def test_evaluate_incident_defaults_to_false():
     assert sig.parameters["incident"].default is False
 
 
+def test_tag_variant_appends_fragment():
+    assert tcd._tag("corridor_peak", 0.5, seed=42, min_green=10, steps=100000,
+                    variant="incaware") == \
+        "corridor_peak_lam05_seed42_mg10_s100000_incaware"
+
+
+def test_tag_variant_defaults_to_empty_and_unchanged():
+    # same string as test_tag_includes_min_green_and_steps -- pins that
+    # omitting variant reproduces the pre-SP12 tag exactly, not just "close".
+    assert tcd._tag("corridor_peak", 0.5, seed=0, min_green=10, steps=100000) == \
+        "corridor_peak_lam05_seed0_mg10_s100000"
+
+
+def test_model_path_variant_avoids_collision_with_plain_checkpoint():
+    plain = tcd._model_path("C1", "corridor_peak", 0.5, 42, 10, 100000)
+    incaware = tcd._model_path("C1", "corridor_peak", 0.5, 42, 10, 100000,
+                               variant="incaware")
+    assert plain != incaware
+    assert plain == "models/idqn_C1_corridor_peak_lam05_seed42_mg10_s100000.pt"
+    assert incaware == \
+        "models/idqn_C1_corridor_peak_lam05_seed42_mg10_s100000_incaware.pt"
+
+
+def test_eval_out_stem_variant_appends_before_on_and_incident_fragments():
+    stem = tcd._eval_out_stem("corridor_peak", "corridor_peak", 0.5, 42, 10, 100000,
+                              incident=True, variant="incaware")
+    assert stem == \
+        "logs/eval_idqn_corridor_peak_lam05_seed42_mg10_s100000_incaware_incident"
+
+
+def test_train_incident_prob_and_variant_default_to_pre_sp12_behaviour():
+    import inspect
+    sig = inspect.signature(tcd.train)
+    assert sig.parameters["incident"].default is None
+    assert sig.parameters["incident_prob"].default == 0.0
+    assert sig.parameters["variant"].default == ""
+
+
+def test_evaluate_variant_defaults_to_empty():
+    import inspect
+    sig = inspect.signature(tcd.evaluate)
+    assert sig.parameters["variant"].default == ""
+
+
+def test_set_incident_updates_config_and_resets_applied_flag():
+    """Pure-logic check of SafetyLoggingEnv.set_incident (SP12) against a
+    bare stand-in object, no SUMO/real env construction needed -- the method
+    body only touches self._incident/_incident_applied."""
+    import env_common as ec
+
+    class _Dummy:
+        pass
+
+    d = _Dummy()
+    d._incident = ("C1_C2", 0, 1800.0, 900.0)
+    d._incident_applied = True
+
+    ec.SafetyLoggingEnv.set_incident(d, None)
+    assert d._incident is None
+    assert d._incident_applied is False
+
+    ec.SafetyLoggingEnv.set_incident(d, ("C1_C2", 0, 1800.0, 900.0))
+    assert d._incident == ("C1_C2", 0, 1800.0, 900.0)
+    assert d._incident_applied is False
+
+
 def test_evaluate_routes_eval_scenario_to_env_and_checkpoint_scenario_to_load(monkeypatch):
     """Pins that eval_scenario actually reaches make_corridor_env (the env the
     episode runs in), while the checkpoint scenario -- NOT eval_scenario --
