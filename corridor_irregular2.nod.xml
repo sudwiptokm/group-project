@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Second irregular-spacing variant of corridor.nod.xml (SP10, follow-up to
+     SP8's corridor_irregular.net.xml). Same 3-signal arterial topology
+     (C1,C2,C3 on y=0), but the REVERSE skew of SP8's: short block first, long
+     block second (100m then 600m, vs SP8's 600m then 100m; both vs the
+     regular 200m/200m). SP8 asked whether idqn beating green_wave zero-shot
+     was about asymmetric spacing generally or specifically about its one
+     578m/78m sample; mirroring which end carries the long block tests
+     whether the effect is direction-dependent (e.g. an artifact of the
+     asymmetry landing on the C2-C3 edge specifically, rather than of
+     asymmetry per se). Reuses corridor.edg.xml verbatim (edges reference
+     node ids, not coordinates), same as corridor_irregular.nod.xml. -->
+<nodes>
+    <node id="W"  x="-200" y="0"    type="priority"/>
+    <node id="C1" x="0"    y="0"    type="traffic_light"/>
+    <node id="C2" x="100"  y="0"    type="traffic_light"/>
+    <node id="C3" x="700"  y="0"    type="traffic_light"/>
+    <node id="E"  x="900"  y="0"    type="priority"/>
+
+    <node id="N1" x="0"    y="200"  type="priority"/>
+    <node id="S1" x="0"    y="-200" type="priority"/>
+    <node id="N2" x="100"  y="200"  type="priority"/>
+    <node id="S2" x="100"  y="-200" type="priority"/>
+    <node id="N3" x="700"  y="200"  type="priority"/>
+    <node id="S3" x="700"  y="-200" type="priority"/>
+</nodes>
