@@ -82,6 +82,38 @@ def test_idqn_trains_and_evaluates(monkeypatch):
 
 
 @pytest.mark.skipif(not os.environ.get("SUMO_HOME"), reason="SUMO_HOME not set")
+def test_idqn_curriculum_trains_across_multiple_routes_and_evaluates(monkeypatch):
+    """SP11: train_curriculum() must actually vary the demand route across
+    episodes (not silently collapse to one fixed scenario), and its
+    checkpoints must be loadable zero-shot by evaluate() under
+    CURRICULUM_TAG. EPISODE_SECONDS is set short enough that a 300-step
+    budget spans several episode boundaries -- at the default 3600s episode
+    length (720 decision steps at delta_time=5) a 300-step budget would never
+    reach a single reset(), and this test would pass even if the per-episode
+    route-swap logic were dead code."""
+    monkeypatch.setenv("EPISODE_SECONDS", "100")
+    seed = 2
+    steps = 300
+    paths = tcd.train_curriculum(lam=0.5, seed=seed, steps=steps, min_green=10)
+    assert set(paths.keys()) == set(tcd.CORRIDOR_TS_IDS)
+    for p in paths.values():
+        assert os.path.exists(p)
+        assert tcd.CURRICULUM_TAG in p
+
+    # zero-shot eval on a scenario the curriculum wasn't anchored to at
+    # construction time -- proves evaluate() finds the checkpoint under
+    # CURRICULUM_TAG (not "corridor_offpeak", the construction-time scenario
+    # train_curriculum passes to make_corridor_env before overriding _route)
+    csv = tcd.evaluate(tcd.CURRICULUM_TAG, lam=0.5, seed=seed, min_green=10,
+                       steps=steps, eval_scenario="corridor_peak")
+    assert "_on_corridor_peak" in csv
+    assert os.path.exists(csv)
+    import pandas as pd
+    df = pd.read_csv(csv)
+    assert df["system_mean_speed"].mean() > 0
+
+
+@pytest.mark.skipif(not os.environ.get("SUMO_HOME"), reason="SUMO_HOME not set")
 def test_idqn_zero_shot_eval_runs_on_different_scenario(monkeypatch):
     monkeypatch.setenv("EPISODE_SECONDS", "200")
     tcd.train("corridor_peak", lam=0.5, seed=1, steps=600, min_green=10)
