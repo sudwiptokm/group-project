@@ -56,3 +56,20 @@ def test_ippo_learns_vs_untrained(monkeypatch, tmp_path):
     import pandas as pd
     assert pd.read_csv(t_csv)["system_mean_speed"].mean() > 0
     assert _mean_wait(t_csv) <= 1.10 * _mean_wait(u_csv)
+
+
+@pytest.mark.skipif(not os.environ.get("SUMO_HOME"), reason="SUMO_HOME not set")
+def test_mappo_trains_and_evaluates(monkeypatch):
+    """SP3: centralized=True must produce an `mappo`-tagged checkpoint and eval
+    CSV, distinct from the IPPO path this file's other tests exercise."""
+    monkeypatch.setenv("EPISODE_SECONDS", "200")
+    model = tc.train("corridor_offpeak", lam=0.5, seed=0, steps=600, min_green=10,
+                     centralized=True)
+    assert os.path.exists(model)
+    assert "mappo" in os.path.basename(model)
+
+    csv = tc.evaluate(model, "corridor_offpeak", lam=0.5, seed=42, min_green=10, steps=600)
+    assert os.path.exists(csv)
+    assert "eval_mappo_" in os.path.basename(csv)
+    import pandas as pd
+    assert pd.read_csv(csv)["system_mean_speed"].mean() > 0
