@@ -194,7 +194,8 @@ def train(scenario: str, lam: float, seed: int, steps: int, min_green: int,
 
 
 def evaluate(model_path: str, scenario: str, lam: float, seed: int, min_green: int,
-             steps: int, tripinfo: bool = False) -> str:
+             steps: int, tripinfo: bool = False,
+             net_file: str = "corridor.net.xml") -> str:
     """Run the trained shared policy greedily on a held-out seed, writing an eval
     CSV in the SafetyLoggingEnv format so compare.py reads it as `ippo`/`mappo`
     (SP3: the entity is read from the checkpoint's `centralized` flag, not passed
@@ -204,7 +205,13 @@ def evaluate(model_path: str, scenario: str, lam: float, seed: int, min_green: i
 
     steps is not used for inference -- it exists purely so this function
     reconstructs the exact same tag train() used to name the checkpoint it is
-    now loading, per _tag()'s docstring."""
+    now loading, per _tag()'s docstring.
+
+    net_file, if given, runs the checkpoint's greedy policy on a DIFFERENT
+    network geometry than it trained on (zero-shot) -- same convention as
+    train_corridor_dqn.evaluate()'s net_file: a non-default value gets its own
+    '_net<label>' output-CSV fragment so it can never silently glob-average
+    with the regular-net eval."""
     os.makedirs("logs", exist_ok=True)
     tag = _tag(scenario, lam, seed, min_green, steps)
     # checkpoints save {"state_dict", "hidden", "centralized", "state_dim"};
@@ -219,9 +226,12 @@ def evaluate(model_path: str, scenario: str, lam: float, seed: int, min_green: i
     state = ckpt["state_dict"] if has_arch else ckpt
     algo = "mappo" if centralized else "ippo"
     out_csv = f"logs/eval_{algo}_{tag}"
+    if net_file != "corridor.net.xml":
+        out_csv += f"_net{net_file.removesuffix('.net.xml').removeprefix('corridor_')}"
 
     env = make_corridor_env(seed=seed, scenario=scenario, lam=lam,
-                            min_green=min_green, out_csv=out_csv, tripinfo=tripinfo)
+                            min_green=min_green, out_csv=out_csv, tripinfo=tripinfo,
+                            net_file=net_file)
     obs_dim, act_dim = _obs_act_dims(env)
     state_dim = ckpt.get("state_dim", obs_dim) if has_arch else obs_dim
     policy = pc.ActorCritic(obs_dim, act_dim, state_dim=state_dim, hidden=hidden)
@@ -240,7 +250,7 @@ def evaluate(model_path: str, scenario: str, lam: float, seed: int, min_green: i
         done = dones["__all__"]
     env.save_csv(env.out_csv_name, env.episode)
     env.close()
-    out = f"logs/eval_{algo}_{tag}_conn{env.label}_ep{env.episode}.csv"
+    out = f"{out_csv}_conn{env.label}_ep{env.episode}.csv"
     print(f"{algo} eval written: {out}")
     return out
 
@@ -264,10 +274,14 @@ if __name__ == "__main__":
                    help="path to a saved model to evaluate instead of training")
     p.add_argument("--tripinfo", action="store_true",
                    help="also write the per-trip XML (only meaningful with --eval)")
+    p.add_argument("--net-file", default="corridor.net.xml",
+                   help="network geometry to evaluate on (only meaningful with "
+                        "--eval; default corridor.net.xml, the regular spacing "
+                        "every checkpoint trains on)")
     args = p.parse_args()
     if args.eval:
         evaluate(args.eval, args.scenario, args.lam, args.seed, args.min_green,
-                 args.steps, tripinfo=args.tripinfo)
+                 args.steps, tripinfo=args.tripinfo, net_file=args.net_file)
     else:
         train(args.scenario, args.lam, args.seed, args.steps, args.min_green,
              centralized=(args.algo == "mappo"))
