@@ -1014,8 +1014,7 @@ than *what*.
 ### 5.14 SP13 / SP13e — the dose-response sweep (this project's headline geometry result)
 
 *(`docs/FINDINGS_2026-08-26-sp13-geometry-dose-response.md`,
-`docs/FINDINGS_2026-08-27-sp13e-lowr.md`; consolidated further in
-`docs/FINAL_REPORT.md`)*
+`docs/FINDINGS_2026-08-27-sp13e-lowr.md`)*
 
 **What was tried / why.** SP10's "3/3, the flip generalizes" conclusion was
 built from 3 hand-picked geometries — not enough to distinguish a monotonic
@@ -1067,8 +1066,7 @@ green_wave−idqn = +13.98s, 95% bootstrap CI [+13.73, +14.12]; at r=0.90
 (outside it), −3.69s, CI [−3.84, −3.46]. Both CIs exclude zero by a wide
 margin relative to their width — the band boundaries are not an artifact
 of n=3 noise, even though the significance test itself has no power to say
-so at this n. See `docs/FINAL_REPORT.md` Section 1 for the narrative
-write-up this table is drawn from.
+so at this n.
 
 **A methodological asymmetry to disclose, and which way it cuts.** This
 comparison is not apples-to-apples in one specific sense: `green_wave`'s
@@ -1326,8 +1324,7 @@ values to check whether the disparity is specific to λ=0.5 or general.
 
 ## 6. Bottom line — the project's consolidated result
 
-Reproduced and expanded from `docs/FINAL_REPORT.md`, this project's own
-prior consolidation of its three fully-closed headline threads:
+Consolidating the project's three fully-closed headline threads:
 
 1. **Single intersection (pre-SP audit, Section 5.1)**: a competently-timed
    static plan beats every RL algorithm tried, by a factor of 2–3 at the
