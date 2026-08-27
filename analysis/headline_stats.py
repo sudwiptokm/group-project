@@ -1,15 +1,28 @@
-"""Paired Wilcoxon signed-rank tests and bootstrap CIs on this project's headline gaps.
+"""Paired statistics on this project's headline gaps.
 
 Run once, non-training: reads existing per-seed CSVs under analysis/ (already
 committed, produced by the SP5-SP15b sweeps) and reports, for each headline
-claim, the paired mean difference, a 95% bootstrap CI on that mean, and a
-paired Wilcoxon signed-rank test where n is large enough for the test to
-carry any resolution (n=3 two-sided Wilcoxon cannot reach p<0.05 regardless
-of effect size -- min attainable two-sided p at n=3 is 0.25 -- so n=3 rows
-report the bootstrap CI only and say so explicitly, rather than a
-meaningless p-value).
+claim, the paired per-seed differences, their mean and standard deviation,
+and -- only where n is large enough for either to carry information -- a 95%
+bootstrap CI and a paired Wilcoxon signed-rank test.
 
-Usage: python -m analysis.headline_stats
+Two n-dependent rules, both applied here rather than left to the reader:
+
+1. A two-sided Wilcoxon signed-rank test cannot reach p<0.05 at n<=5
+   regardless of effect size (its minimum attainable two-sided p is 2*0.5**n
+   -- 0.25 at n=3, 0.0625 at n=5), so no p-value is reported below n=6.
+2. A bootstrap resamples the observed differences, so at n=3 the resample
+   mean can take only a handful of discrete values and the resulting
+   interval systematically understates uncertainty -- it describes the
+   spread of three numbers, not the sampling distribution of the effect.
+   No CI is reported below n=6 either. Small-n rows report every per-seed
+   difference instead, so a reader can see the whole sample directly.
+
+Wilcoxon rows also report the minimum two-sided p attainable at their n
+(MIN_P), because at n=10 a reported p=0.0020 IS that floor: it means all ten
+signed differences pointed the same way and nothing more precise than that.
+
+Usage: python3 -m analysis.headline_stats
 """
 import numpy as np
 import pandas as pd
@@ -17,6 +30,10 @@ from scipy.stats import wilcoxon
 
 RNG = np.random.default_rng(0)
 N_BOOT = 20000
+
+# Below this n, neither a bootstrap CI nor a Wilcoxon p carries information;
+# see the module docstring. Rows below it report per-seed differences instead.
+MIN_N_FOR_INTERVAL = 6
 
 
 def bootstrap_ci(diffs, n_boot=N_BOOT, alpha=0.05):
@@ -39,20 +56,34 @@ def report(label, a, b, seeds_a, seeds_b, note=""):
     n = len(diffs)
     mean = diffs.mean()
     sd = diffs.std(ddof=1) if n > 1 else float("nan")
-    lo, hi = bootstrap_ci(diffs)
-    line = f"{label}: n={n}, mean diff={mean:+.3f}, sd={sd:.3f}, 95% bootstrap CI=[{lo:+.3f}, {hi:+.3f}]"
-    if n >= 6:
+    per_seed = " ".join(f"{s}:{d:+.3f}" for s, d in zip(common, diffs))
+    line = f"{label}: n={n}, mean diff={mean:+.3f}, sd={sd:.3f}"
+    within_a = np.std([a_map[s] for s in common], ddof=1) if n > 1 else float("nan")
+    within_b = np.std([b_map[s] for s in common], ddof=1) if n > 1 else float("nan")
+    row = dict(label=label, n=n, mean=mean, sd=sd, per_seed=per_seed,
+               sd_condition_a=within_a, sd_condition_b=within_b,
+               ci_lo=float("nan"), ci_hi=float("nan"), p=float("nan"),
+               min_p=2 * (0.5 ** n))
+    if n >= MIN_N_FOR_INTERVAL:
+        lo, hi = bootstrap_ci(diffs)
+        row["ci_lo"], row["ci_hi"] = lo, hi
+        line += f", 95% bootstrap CI=[{lo:+.3f}, {hi:+.3f}]"
         try:
             stat, p = wilcoxon(diffs)
-            line += f", Wilcoxon signed-rank p={p:.4g}"
+            row["p"] = p
+            line += (f", Wilcoxon signed-rank p={p:.4g}"
+                     f" (min attainable at n={n}: {row['min_p']:.4g})")
         except ValueError as e:
             line += f", Wilcoxon: {e}"
     else:
-        line += f", Wilcoxon not meaningful at n={n} (min two-sided p={2 * (0.5 ** n):.3g}; use the CI)"
+        # No interval and no p-value at this n -- show the whole sample instead.
+        line += (f", per-seed diffs [{per_seed}]"
+                 f", range [{diffs.min():+.3f}, {diffs.max():+.3f}]"
+                 f"; no CI or p reported at n={n} (see module docstring)")
     if note:
         line += f"  [{note}]"
     print(line)
-    return dict(label=label, n=n, mean=mean, sd=sd, ci_lo=lo, ci_hi=hi)
+    return row
 
 
 def main():
