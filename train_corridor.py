@@ -157,10 +157,18 @@ def update(policy, optim, per, hp, last_states):
 
 
 def train(scenario: str, lam: float, seed: int, steps: int, min_green: int,
-         centralized: bool = False) -> str:
+         centralized: bool = False, hp_overrides: dict = None,
+         tag_suffix: str = "") -> str:
     """centralized=True is MAPPO (SP3): the critic sees the joint observation
-    of all agents. centralized=False (default) is IPPO, unchanged behaviour."""
+    of all agents. centralized=False (default) is IPPO, unchanged behaviour.
+
+    hp_overrides (SP15 retune) patches individual _hp() entries for a one-off
+    run (e.g. a lr/hidden variant) without touching the project's tuned
+    defaults. tag_suffix keeps such a variant's checkpoint/eval filenames from
+    colliding with the default-HP run at the same scenario/lam/seed."""
     hp = _hp()
+    if hp_overrides:
+        hp.update(hp_overrides)
     torch.manual_seed(seed)
     np.random.seed(seed)
     env = make_corridor_env(seed=seed, scenario=scenario, lam=lam, min_green=min_green)
@@ -183,7 +191,7 @@ def train(scenario: str, lam: float, seed: int, steps: int, min_green: int,
 
     algo = "mappo" if centralized else "ippo"
     os.makedirs("models", exist_ok=True)
-    path = f"models/{algo}_{_tag(scenario, lam, seed, min_green, steps)}.pt"
+    path = f"models/{algo}_{_tag(scenario, lam, seed, min_green, steps)}{tag_suffix}.pt"
     # store the architecture (+ centralized/state_dim, SP3) alongside the weights
     # so evaluate() rebuilds the exact net without depending on _hp()'s current
     # defaults matching what this checkpoint was actually trained with.
@@ -195,7 +203,7 @@ def train(scenario: str, lam: float, seed: int, steps: int, min_green: int,
 
 def evaluate(model_path: str, scenario: str, lam: float, seed: int, min_green: int,
              steps: int, tripinfo: bool = False,
-             net_file: str = "corridor.net.xml") -> str:
+             net_file: str = "corridor.net.xml", tag_suffix: str = "") -> str:
     """Run the trained shared policy greedily on a held-out seed, writing an eval
     CSV in the SafetyLoggingEnv format so compare.py reads it as `ippo`/`mappo`
     (SP3: the entity is read from the checkpoint's `centralized` flag, not passed
@@ -211,9 +219,14 @@ def evaluate(model_path: str, scenario: str, lam: float, seed: int, min_green: i
     network geometry than it trained on (zero-shot) -- same convention as
     train_corridor_dqn.evaluate()'s net_file: a non-default value gets its own
     '_net<label>' output-CSV fragment so it can never silently glob-average
-    with the regular-net eval."""
+    with the regular-net eval.
+
+    tag_suffix (SP15 retune) mirrors train()'s: without it, an HP-variant
+    checkpoint trained at the same scenario/lam/seed/min_green/steps as the
+    default-HP run would silently overwrite that run's eval CSV here, since
+    the tag is derived from those five args, not from model_path."""
     os.makedirs("logs", exist_ok=True)
-    tag = _tag(scenario, lam, seed, min_green, steps)
+    tag = _tag(scenario, lam, seed, min_green, steps) + tag_suffix
     # checkpoints save {"state_dict", "hidden", "centralized", "state_dim"};
     # tolerate a bare state_dict, or a pre-SP3 dict missing the two new keys,
     # both of which default to IPPO (centralized=False, state_dim=obs_dim) --

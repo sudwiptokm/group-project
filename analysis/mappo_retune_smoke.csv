@@ -1,0 +1,11 @@
+variant,geometry,delay_per_trip
+ippo,regular,16.91408905506459
+ippo,irregular,19.142264665757118
+mappo,regular,18.262412623006412
+mappo,irregular,20.084790174002023
+mappo_lr_low,regular,27.129426033481412
+mappo_lr_low,irregular,29.240987654321042
+mappo_batch64,regular,18.031515460414592
+mappo_batch64,irregular,19.6909044368601
+mappo_wide512,regular,17.437405900305144
+mappo_wide512,irregular,19.870361774744016
