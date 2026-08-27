@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SP13c span=450 geometry dose-response sweep point r=0.50
+     (analysis/build_geometry_sweep_nets_span450.py). Same 3-signal arterial
+     topology as corridor.nod.xml, C1@0/C3=450 fixed (near the low end of
+     SP13c's (400m,550m] crossing-transition bracket), only C2's position
+     varies: nominal 225m/225m. Reuses corridor.edg.xml verbatim (edges
+     reference node ids, not coordinates), same as corridor_irregular.nod.xml. -->
+<nodes>
+    <node id="W"  x="-200" y="0"    type="priority"/>
+    <node id="C1" x="0"    y="0"    type="traffic_light"/>
+    <node id="C2" x="225"  y="0"    type="traffic_light"/>
+    <node id="C3" x="450"  y="0"    type="traffic_light"/>
+    <node id="E"  x="650"  y="0"    type="priority"/>
+
+    <node id="N1" x="0"    y="200"  type="priority"/>
+    <node id="S1" x="0"    y="-200" type="priority"/>
+    <node id="N2" x="225"  y="200"  type="priority"/>
+    <node id="S2" x="225"  y="-200" type="priority"/>
+    <node id="N3" x="450"  y="200"  type="priority"/>
+    <node id="S3" x="450"  y="-200" type="priority"/>
+</nodes>
