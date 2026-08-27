@@ -27,8 +27,11 @@ algorithm tried, and the reason is structural (amber loss under a
 too-short minimum green), not a training failure; (2) at the corridor scale,
 a fixed offset-coordinated plan ("green wave") beats every learned or
 reactive controller on regularly-spaced signals, but loses to independent
-DQN specifically inside two bounded bands of signal-spacing asymmetry,
-confirmed at n=10 seeds across three geometry variants; (3) the project's
+DQN once signal spacing becomes asymmetric — a reversal confirmed at n=10
+seeds on one irregular geometry and replicated at n=3 on two further
+geometry variants, with the finer structure of *where* it reverses (two
+bounded bands of the asymmetry ratio rather than a monotonic trend) resting
+on a single-span, n=3 sweep and correspondingly weaker; (3) the project's
 safety-weighted reward's default weight (λ=0.5) was never the
 efficiency-optimal point — λ=0.25 beats it on delay on both geometries
 tested, confirmed at n=10 seeds; (4) a centralised-critic multi-agent method
@@ -109,8 +112,9 @@ following sections addresses one required element explicitly:
 - **Section 6** — the project's bottom-line, consolidated result.
 - **Section 7** — overall future work across the whole project.
 - **Section 8** — individual contribution statement.
-- **Appendix A** — paired statistical tests and bootstrap confidence
-  intervals on every headline gap reported in Section 5.
+- **Appendix A** — paired per-seed differences on every headline gap
+  reported in Section 5, with significance tests and confidence intervals
+  where (and only where) n supports them.
 - **References** — every citation used above, numbered.
 
 ---
@@ -545,12 +549,17 @@ phase(t)         = floor( ((t − offset) mod (num_phases × phase_seconds))
   respectively. `yellow_time` (3 s) and `delta_time` (5 s) are fixed
   simulation constants; `min_green` is this project's single most
   consequential **swept** parameter — its value materially changes every
-  controller's achievable performance (Section 5.1) and its default value
-  (60 s, single intersection; project-wide default resolved via
-  `DEFAULT_MIN_GREEN`/`$MIN_GREEN`) was itself derived from a measurement,
-  not chosen a priori: `analysis/actuated.py`'s sweep found a
-  perfect-information, non-learning controller is 5.6× worse than a fixed
-  plan at a 10 s floor and matches it at 60 s (`env_common.py:262-267`).
+  controller's achievable performance (Section 5.1) and its value at each
+  network scale was derived from a measurement, not chosen a priori. Single
+  intersection: 60 s (`DEFAULT_MIN_GREEN`, resolved via `$MIN_GREEN`), from
+  `analysis/actuated.py`'s sweep, which found a perfect-information,
+  non-learning controller 5.6× worse than a fixed plan at a 10 s floor and
+  matching it at 60 s (`env_common.py:262-267`). Corridor: 10 s, from
+  `analysis/corridor_sweep.csv`'s own 5–90 s sweep, at which 60 s is 3.5×
+  worse — the two scales' floors legitimately disagree, and **Section 4.7**
+  gives the full sweep, the mechanism, and the limitations that creates.
+  Note that `min_green` enters this formula directly: the plan's phase
+  length, and hence its cycle, is set by the floor and by nothing else.
 - This offset-plan formula is this project's own implementation of the
   classical **arterial-progression / "green wave"** signal-coordination
   concept from traffic engineering, whose canonical formalisation is Morgan
@@ -615,13 +624,133 @@ that at the corridor scale.
 | `B_THRESH` | 4.5 m/s² | fixed | project's own choice ("defensible default", disclosed as unverified against a cited source) |
 | `SAFETY_SCALE` | 2.1298 | fixed, empirically calibrated | measured once from a λ=0 probe episode (`calibrate_probe.py`); recalibrated after a sampling-bug fix |
 | λ (safety weight) | {0, 0.25, 0.5, 0.75, 1.0} | **swept** — the project's main experimental axis | SP14/SP14b measured the optimum empirically (Section 5.16) |
-| `min_green` | 10 s (Stage-1 default, now shown to be a defect) / 60 s (corrected default) / swept 5–90 s | **swept**, and the single most consequential parameter measured in the whole project | measured via `analysis/actuated.py`/`headroom.py` (Section 5.1) |
+| `min_green` | single intersection: 10 s (Stage-1 default, shown to be a defect) → 60 s (corrected). Corridor: 10 s, measured as that network's own optimum. Swept 5–90 s at both scales | **swept**, and the single most consequential parameter measured in the whole project | single intersection: `analysis/actuated.py`/`headroom.py` (Section 5.1). Corridor: `analysis/corridor_sweep.csv`, 10 floors × 10 seeds (Section 4.7) |
 | `delta_time` | 5 s | fixed | environment design choice |
 | `yellow_time` | 3 s | fixed | environment design choice |
 | `v_free` (arterial) | 13.89 m/s | fixed | network geometry file |
 | signal spacing | 200 m (regular) / swept 40 m–700 m (irregularity studies) | **swept** in SP8–SP13e | hand-built and programmatically generated net files |
 | demand multipliers (peak/off-peak/tidal/skew) | 1.5× / 0.5× / 1400:700 / 150:600:150 veh/h | fixed per scenario | `make_scenarios.py`, chosen and disclosed, not fit to external data |
 | PPO/A2C/DQN/QR-DQN hyperparameters | see Section 4.5 | mostly Optuna-tuned, some reused across scales | `tune.py`, `params/*.json` |
+
+### 4.7 The two `min_green` floors — why 10 s is a defect at one scale and the measured optimum at the other
+
+This subsection exists to resolve what would otherwise read as a
+contradiction between two of this report's most important sections. Section
+5.1 says the single-intersection Stage-1 result collapsed because
+`min_green` was hard-wired at 10 s. Every corridor experiment in this
+project — SP4 through SP15b, including the Section 5.14 geometry headline
+and the Section 5.16 λ ablation — ran at `min_green=10`. That is not the
+project re-using a setting it had already condemned, and the difference is
+worth stating precisely rather than leaving to inference.
+
+**What Stage-1 actually established.** The Stage-1 defect was never "10 s is
+a bad floor in general." It was that 10 s had been *hard-wired with no
+override and never measured* (`env_common.py:506` records the removed
+hard-wiring), and that when it finally was measured at the single
+intersection, it lost badly: a perfect-information, non-learning
+queue-actuated controller ran 5.6× worse at a 10 s floor than a fixed 60 s
+plan, and the whole comparison had no headroom in which any controller could
+show an advantage (Section 5.1). The corrected floor there is 60 s, and
+`DEFAULT_MIN_GREEN = 60` (`env_common.py:268`) still encodes that as the
+project-wide default for the single-intersection environment.
+
+**The corridor floor was measured the same way and came out differently.**
+`analysis/corridor_sweep.csv` sweeps 10 floors from 5 s to 90 s, 10 seeds
+per point, for both non-learning corridor baselines, on `corridor_peak`
+(mirrored on `corridor_tidal`, which ranks identically). Delay per completed
+trip, seconds, `corridor_peak`, n=10 seeds per cell:
+
+| `min_green` | plan phase length | full cycle | `green_wave` | `max_pressure` |
+|---:|---:|---:|---:|---:|
+| 5 | 10 s | 20 s | 18.87 | 20.56 |
+| **10** | **15 s** | **30 s** | **13.46** | 26.52 |
+| 15 | 20 s | 40 s | 18.52 | **19.43** |
+| 20 | 25 s | 50 s | 26.18 | 25.35 |
+| 25 | 30 s | 60 s | 35.45 | 33.14 |
+| 30 | 35 s | 70 s | 41.15 | 40.67 |
+| 45 | 50 s | 100 s | 35.79 | 49.48 |
+| 60 | 65 s | 130 s | 46.87 | 39.22 |
+| 75 | 80 s | 160 s | 44.35 | 43.02 |
+| 90 | 95 s | 190 s | 44.92 | 47.92 |
+
+At the corridor scale, the Stage-1 correction is inverted: `min_green=60`
+makes `green_wave` **3.5× worse** (46.87 s vs. 13.46 s) than
+`min_green=10`, and 10 s is an interior optimum, not a floor-of-the-grid
+artifact — 5 s is worse too. The corridor training scripts require the floor
+to be passed explicitly and refuse to fall back to any default
+(`train_corridor.py:285`, `train_corridor_dqn.py:450`), precisely so that
+this value reads as a measured choice rather than an inherited one.
+
+**Why the Stage-1 argument does not transfer.** Stage-1's mechanism was
+amber loss: at a 2-phase junction, a 10 s green paying a fixed 3 s clearance
+spends ~23% of every cycle on amber, and a longer green amortises that fixed
+cost. That mechanism is still present on the corridor — and is still
+adverse. The corridor's plan spends 20% of its cycle on amber at
+`min_green=10` (6 s of a 30 s cycle) against 4.6% at `min_green=60` (6 s of
+130 s), and *still* runs 3.5× faster. Amber loss is simply not the binding
+constraint at corridor scale; progression bandwidth is. The corridor's
+signals sit 200 m apart at a 13.89 m/s free-flow speed, so a platoon takes
+**14.40 s** to travel between neighbours. The plan's phase length is
+`ceil_to_grid(min_green + yellow_time, delta_time)`
+(`corridor_control.py:18-30`), so `min_green=10` yields a **15 s** phase —
+within 0.6 s of the inter-signal travel time, which is exactly the condition
+a green wave needs: a platoon released by one signal arrives at the next as
+that signal's own green begins. `min_green=15` gives a 20 s phase (5.6 s of
+mismatch per hop) and `min_green=60` gives a 65 s phase, at which point the
+cycle is over 9× the travel time and progression is destroyed — a platoon
+that misses its window waits out a 65 s red. The single intersection has no
+progression to lose and no downstream neighbour to align with, so the only
+thing its floor trades against is amber loss, and the optimum lands at the
+opposite end of the same grid.
+
+Both floors are therefore the same methodological rule applied twice: sweep
+the floor on the network in question and use what the sweep returns. They
+disagree because the two networks are not the same control problem.
+
+**Three limitations this creates, disclosed rather than resolved.**
+
+1. **The corridor floor was calibrated on the non-learning baselines only.**
+   `analysis/corridor_sweep.csv` contains `green_wave` and `max_pressure`
+   rows at every floor; no IDQN or IPPO checkpoint was ever trained at any
+   floor other than 10 s (every model file in `models/` and every corridor
+   evaluation log carries the `mg10` tag). Whether a learned controller has
+   its own, different optimum is untested. Note which way this cuts: the
+   floor was selected at the value that maximises `green_wave`'s own
+   performance, so every "green_wave wins" result in Section 5 is measured
+   against the classical baseline at its best, and every "IDQN beats
+   green_wave" result (Sections 5.9, 5.14) is a win over the classical plan
+   at its best floor — conservative in both directions, but it does leave
+   open that IDQN's numbers throughout are not at *its* best floor. The
+   same caveat applies to `max_pressure`, whose own optimum is 15 s, not
+   10 s (19.43 s vs. 26.52 s in the table above): wherever it appears in a
+   corridor comparison table in Section 5 it is running at the floor chosen
+   for `green_wave`, roughly 7 s/trip off its own best. SP4's findings
+   document (Section 5.5) is the one place its "own best floor" figure is
+   quoted instead, which is why the `max_pressure` numbers cited from that
+   sub-project and those in Section 5.14's sweep table differ.
+2. **`green_wave`'s per-geometry re-tuning is offset-only, not
+   cycle-length.** Section 5.14 describes `green_wave` as recomputed
+   "oracle-optimal" for each swept geometry. That is true of its *offsets*,
+   which are derived from each net's true signal positions
+   (`corridor_control.py:9-15`), but its *phase length and cycle* depend
+   only on `min_green`, `yellow_time`, and `delta_time` — never on geometry.
+   So the 15 s phase that resonates with the regular net's 14.40 s hop is
+   carried unchanged onto geometries whose block travel times are different
+   by construction. Part of what the Section 5.14 bands measure may
+   therefore be a fixed cycle length going in and out of alignment with
+   changing block travel times, rather than the offset-compromise mechanism
+   that section proposes. This is a plausible, explicitly unverified
+   alternative reading of the band structure, and it does not affect the
+   flatness result for IDQN (which has no cycle length at all).
+3. **The band locations are floor-conditional.** Because the bands are a
+   relationship between block travel times and a cycle length fixed by
+   `min_green`, the specific ratios `r≈[0.51,0.80]` and `r≈[0.10,0.34]`
+   should be read as "at a 30 s cycle," not as geometry constants. Nothing
+   in this project tests whether they move under a different floor.
+
+Re-running even one point of the Section 5.14 sweep with `green_wave`'s
+cycle length re-optimised per geometry would discriminate limitation 2
+directly, and is named again in Section 7.
 
 ---
 
@@ -647,8 +776,8 @@ noted inline, their chronological order).
 | SP6 | IDQN generalizes across demand *shape* shifts, overfits to demand *magnitude* |
 | SP7 | mid-episode incident: green_wave degrades predictably, reactive controllers vary by seed |
 | SP8 | first flip: IDQN beats green_wave on one irregular-spacing net (n=3) |
-| SP9 | flip confirmed 10/10 seeds, Wilcoxon p=0.0020 (Appendix A) |
-| SP10 | flip holds on 3/3 spacing variants — later shown to be an oversimplified reading (SP13) |
+| SP9 | flip confirmed 10/10 seeds on one geometry, Wilcoxon p=0.0020 — the test's floor at n=10 (Appendix A) |
+| SP10 | flip holds on 3/3 spacing variants (n=3 each) — later shown to be an oversimplified reading (SP13) |
 | SP11 | demand-magnitude curriculum narrows but does not close SP6's overfitting gap |
 | SP12 | incident-aware retraining: no reliable gain on the metric that isolates incident cost |
 | SP13 / SP13e | headline result: two bounded asymmetry-ratio bands, not a monotonic effect; idqn flat throughout |
@@ -693,9 +822,17 @@ adaptive headroom over a good static plan is only ~10% at a 2-phase
 intersection and inside seed noise.
 
 This audit is the project's methodological foundation: every later
-sub-project inherits its corrected floor, its delay-per-completed-trip
-ranking metric (replacing the biased in-network waiting-time metric), and
-its seed-pairing discipline.
+sub-project inherits its delay-per-completed-trip ranking metric (replacing
+the biased in-network waiting-time metric), its seed-pairing discipline, and
+— critically — its *rule* about the action-space floor: sweep it on the
+network being studied and use what the sweep returns, rather than inheriting
+a number. **What later sub-projects do not inherit is the number itself.**
+The corrected floor here is 60 s, but every corridor experiment from SP4
+onward runs at `min_green=10`, because the same sweep run on the corridor
+returns 10 s as that network's optimum and 60 s as 3.5× worse. Section 4.7
+gives the sweep, the mechanism (progression bandwidth binds at corridor
+scale, amber loss binds at a single intersection), and the three limitations
+the corridor floor carries.
 
 ### 5.2 SP1 — the corridor environment
 
@@ -928,8 +1065,11 @@ new hypothesis test. **What was found**: exactly that. IDQN beats
 subset's +1.14s ± 0.19s) — the sign never flips, though the spread nearly
 doubles. **"10 of 10" is now backed by an actual test, not just a sign
 count**: paired Wilcoxon signed-rank on the n=10 differences gives
-p=0.0020, and the 95% bootstrap CI on the mean margin is [+0.73, +1.18]s
-(Appendix A) — an interval that excludes zero by more than its own width,
+p=0.0020 — which is exactly the smallest two-sided p attainable at n=10
+(2×0.5¹⁰), so it restates "all ten seeds agreed" in test form rather than
+adding evidence beyond it — and the 95% bootstrap CI on the mean margin is
+[+0.73, +1.18]s (Appendix A), an interval that excludes zero by more than
+its own width,
 despite the effect (~1s) being modest relative to the ~17–19s baseline
 delay and the 0.38s seed standard deviation, which is exactly the scale at
 which a sign-count alone ("10 of 10 seeds") is not yet a statistical test.
@@ -947,10 +1087,12 @@ SP10) remains untried.
 its one specific asymmetry (which block is long, and how extreme). SP10
 built two more variants — `irregular2` (reverse skew, 78 m/578 m) and
 `irregular3` (same direction as SP8, milder asymmetry, 278 m/78 m) — and
-re-ran the same zero-shot comparison. **What was expected**: a check of
-whether the effect is direction-dependent or scales monotonically with
-asymmetry severity. **What was found**: the flip holds on all 3 variants
-(3/3) — not direction-dependent (the reverse-skew variant flips the same
+re-ran the same zero-shot comparison, at n=3 IDQN seeds (42–44, the only
+checkpoints that exist) against n=5 baseline seeds. **What was expected**: a
+check of whether the effect is direction-dependent or scales monotonically
+with asymmetry severity. **What was found**: the flip holds on all 3
+variants (3/3 variants, n=3 seeds each — a replication of SP9's n=10
+single-geometry result across geometries, not a second n=10 confirmation) — not direction-dependent (the reverse-skew variant flips the same
 way, margin if anything larger) and **not** purely severity-scaling in the
 expected direction: the *milder* asymmetry (`irregular3`) produced the
 *largest* IDQN win margin, because `green_wave` degrades almost as much
@@ -1057,23 +1199,38 @@ finding.** The full sweep, delay per completed trip (seconds), span=400 m,
 
 ![Geometry dose-response: delay vs asymmetry ratio, span=400m, shaded bands mark where idqn beats green_wave](figures/geometry_dose_response.png)
 
-Paired-by-seed statistics on four representative points (n=3, seeds 42–44
-common to both controllers; see Appendix A for the full table and the
-caveat that a two-sided Wilcoxon test cannot reach conventional
-significance at n=3 regardless of effect size — the bootstrap CI is the
-right evidence to read here): at r=0.60 (inside the high band),
-green_wave−idqn = +13.98s, 95% bootstrap CI [+13.73, +14.12]; at r=0.90
-(outside it), −3.69s, CI [−3.84, −3.46]. Both CIs exclude zero by a wide
-margin relative to their width — the band boundaries are not an artifact
-of n=3 noise, even though the significance test itself has no power to say
-so at this n.
+**What the n=3 evidence behind these band boundaries can and cannot
+support.** Each row above is 3 seeds (42–44), which is too few for either a
+significance test or an interval estimate to carry information — a two-sided
+Wilcoxon cannot reach p<0.05 at n=3 regardless of effect size, and a
+bootstrap at n=3 resamples three numbers, so its interval can take only a
+handful of discrete values and systematically understates uncertainty.
+Appendix A therefore reports no p-value and no confidence interval at this
+n, and gives the three per-seed differences directly instead. Read that way:
+at r=0.60 (inside the high band) the paired green_wave−idqn differences are
++13.73, +14.08, +14.12 s; at r=0.90 (outside it), −3.84, −3.46, −3.78 s; at
+r=0.20 (inside the low band), +5.64, +6.45, +6.00 s. Across all seven
+representative points, the paired differences have a seed-to-seed standard
+deviation of 0.17–0.57 s, against effects of 3–14 s inside the bands — one
+to two orders of magnitude above the observed seed variation, with no seed
+crossing zero at any in-band point. That is the honest form of the claim:
+the effects are very large relative to how much these three seeds actually
+differ from each other, which is *evidence* that the bands are not seed
+noise, but it is not an interval estimate and no interval estimate at n=3
+would be trustworthy. The one representative point where the seeds do
+straddle zero is r=0.10 (−0.49, +0.56, −0.33 s), which is why the band edge
+is placed above it rather than at it.
 
 **A methodological asymmetry to disclose, and which way it cuts.** This
 comparison is not apples-to-apples in one specific sense: `green_wave`'s
 offset (Section 4.3) is *recomputed from each geometry's true signal
-positions* — it is always the oracle-optimal fixed-offset plan for the
-exact net being evaluated, which is also how a real green-wave deployment
-would be configured for a known corridor. `idqn`, by contrast, is a single
+positions* — it is the oracle-optimal fixed-*offset* plan for the exact net
+being evaluated, which is also how a real green-wave deployment would be
+configured for a known corridor. (Its *cycle length* is not re-optimised
+per geometry — that is a function of `min_green` alone and is held at the
+regular net's calibrated value throughout; see Section 4.7, limitation 2,
+for why part of the band structure may be attributable to that.) `idqn`, by
+contrast, is a single
 policy checkpoint trained once on the regular (r=0.50) net and evaluated
 **zero-shot** — never retrained or fine-tuned — on every other geometry in
 the table. So the comparison is "oracle-tuned classical control" vs.
@@ -1195,10 +1352,14 @@ would do. **This time the n is large enough for a real test, and it passes
 one**: paired Wilcoxon signed-rank on the n=10 gap gives p=0.0020 (regular)
 and p=0.0039 (irregular), 95% bootstrap CIs [+0.76, +1.26]s (regular) and
 [+0.33, +0.86]s (irregular) — neither interval touches zero (Appendix A).
-The n=3 regular-net CI, by contrast, was already tight enough to exclude
-zero ([+0.67, +1.26]s) but the n=3 irregular-net CI was not ([−0.12,
-+0.64]s) — exactly the "possibly thin" read SP14 itself gave before SP14b's
-widening resolved it. **Verdict**: closed, confirmed; λ=0.5 remains defensible (near the
+The original n=3 evidence is reported without intervals (Appendix A: no
+bootstrap CI is trustworthy at n=3), and the per-seed differences show
+exactly the "possibly thin" pattern SP14 itself flagged: on the regular net
+all three seeds agreed with room to spare (+1.26, +0.70, +0.67 s), while on
+the irregular net one of the three pointed the other way (+0.22, +0.64,
+−0.12 s). It is that single disagreeing seed, not a formal test, that made
+the n=3 irregular result thin — and SP14b's widening to n=10 is what
+resolved it. **Verdict**: closed, confirmed; λ=0.5 remains defensible (near the
 knee, small cost relative to λ=0.25) but was never what a systematic sweep
 would have picked, and the project can now say *why* 0.5 sits where it does
 on a measured curve rather than that it was never checked. **Future work**:
@@ -1274,8 +1435,10 @@ type — a fair reading of the project up to this point is that it is
 without any result that specifically depends on the mix being heterogeneous
 rather than homogeneous. This checks that directly: delay per completed
 trip, disaggregated by vehicle type, for the three corridor controllers at
-their project-default settings (`corridor_peak`, regular net, λ=0.5 for
-idqn, min_green=10):
+the standing corridor settings used from SP4 onward (`corridor_peak`,
+regular net, λ=0.5 for idqn, and `min_green=10` — the corridor's own
+measured floor, not the single intersection's corrected 60 s; Section 4.7
+explains why those two numbers legitimately differ):
 
 | controller | moto (59–60% of trips) | auto (25–26%) | car (15%) |
 |---|---:|---:|---:|
@@ -1331,21 +1494,32 @@ Consolidating the project's three fully-closed headline threads:
    defective 10 s floor and to a statistical tie at the corrected 60 s
    floor. The binding constraint was the action space (`min_green`), not the
    algorithm — confirmed by a non-learning, perfect-information controller
-   failing in exactly the same way at the same floor.
+   failing in exactly the same way at the same floor. This is a
+   *single-intersection* result about a *single-intersection* floor: the
+   same sweep run on the corridor returns 10 s as that network's optimum,
+   which is why findings 2–4 below are measured at 10 s (Section 4.7).
 2. **Corridor, regular spacing**: a fixed offset-coordinated plan
    (`green_wave`) beats every reactive and learned controller tried
    (`max_pressure`, IPPO, IDQN, MAPPO), robust across ordinary demand,
    demand shifts, and a mid-episode incident (SP4, SP6, SP7).
 3. **Corridor, irregular spacing — this project's headline reversal**: IDQN
-   beats `green_wave` inside two bounded bands of the asymmetry-ratio space
-   (`r≈[0.51,0.80]` and `r≈[0.10,0.34]` at span=400 m), not monotonically
-   with irregularity, and IDQN's zero-shot policy is flat and
-   geometry-invariant across every span and ratio tested (SP8–SP13e). This
-   is a comparison between an oracle-tuned classical plan and a frozen,
-   never-retrained learned policy, not two equally-adapted controllers
-   (Section 5.9/5.14) — a handicap that cuts in IDQN's favour, not
-   against it. Bootstrap CIs on representative points, and a Wilcoxon
-   p=0.0020 on the n=10-confirmed flip (SP9), exclude zero (Appendix A).
+   beats `green_wave` once spacing is asymmetric, and IDQN's zero-shot
+   policy is flat and geometry-invariant across every span and ratio tested
+   (SP8–SP13e). This is a comparison between a per-geometry offset-tuned
+   classical plan and a frozen, never-retrained learned policy, not two
+   equally-adapted controllers (Section 5.9/5.14) — a handicap that cuts in
+   IDQN's favour, not against it. **The three parts of this finding rest on
+   different evidence and should not be quoted as one number**: (a) *that*
+   the reversal happens is confirmed at n=10 seeds on one irregular
+   geometry, all ten seeds agreeing, Wilcoxon p=0.0020 with a bootstrap CI
+   excluding zero (SP9); (b) *that it is not specific to one asymmetry* is
+   replicated at n=3 on two further geometry variants (SP10); (c) *where* it
+   happens — two bounded bands of the asymmetry ratio, `r≈[0.51,0.80]` and
+   `r≈[0.10,0.34]`, rather than a monotonic trend — comes from a 13-point
+   sweep at n=3 on one span (400 m) with a cycle length fixed at the regular
+   net's calibrated value, and is the weakest-evidenced of the three
+   (Sections 4.7 and 5.14; Appendix A reports per-seed differences rather
+   than intervals at that n).
 4. **The safety-weight default**: λ=0.5 was never efficiency-optimal;
    λ=0.25 beats it on delay on both geometries tested, confirmed at n=10
    seeds with paired Wilcoxon p≤0.004 on both geometries (SP14, SP14b,
@@ -1431,7 +1605,27 @@ benchmarking reader would each flag first:
   methodology cannot answer on its own.
 - **IDQN checkpoints are n=3 everywhere in the geometry sweeps**
   (SP13/SP13b) — no seeds beyond 42–44 exist for non-default
-  lambda/geometry combinations without new training.
+  lambda/geometry combinations without new training. This is the binding
+  constraint on the band result specifically: at n=3 neither a significance
+  test nor a confidence interval carries information (Appendix A), so the
+  band boundaries rest on effect sizes being one to two orders of magnitude
+  above the observed seed spread rather than on any interval estimate.
+  Widening the four representative in-band/out-of-band points to n=10, the
+  same widening SP9 and SP14b already did elsewhere, is the cheapest
+  available strengthening of this project's headline geometry claim.
+- **`green_wave`'s cycle length is never re-optimised per geometry**
+  (Section 4.7, limitation 2): only its offsets are. Its phase length is
+  fixed at 15 s by the corridor's calibrated `min_green=10`, which happens
+  to sit within 0.6 s of the *regular* net's 14.40 s inter-signal travel
+  time, and is carried unchanged onto every swept geometry. Re-running even
+  a few Section 5.14 sweep points with the cycle re-optimised per geometry
+  would establish how much of the band structure is the offset-compromise
+  mechanism that section proposes and how much is a fixed cycle drifting
+  out of alignment with changing block travel times.
+- **No learned controller was ever trained at a `min_green` other than
+  10 s** (Section 4.7, limitation 1). The corridor floor was calibrated on
+  `green_wave` and `max_pressure` only; whether IDQN has a different
+  optimum, and whether the reported gaps move if it does, is untested.
 - **Hyperparameters were held fixed across every λ arm** (SP14/SP14b) — the
   λ=0.25 optimum is relative to hyperparameters selected at λ=0.5, not
   independently retuned per λ.
@@ -1470,53 +1664,77 @@ member describing their own actual contribution.)*
 
 ---
 
-## Appendix A — statistical tests on every headline gap
+## Appendix A — per-seed differences and statistical tests on every headline gap
 
 Computed once for this report (`analysis/headline_stats.py`), reading only
 already-committed per-seed CSVs — no new simulation. Every headline gap in
 Sections 5.9–5.16 is a **paired** comparison (same numbered seed = same
 demand realisation, different controller/λ, the project's own established
-pairing convention throughout Sections 5.1–5.18): paired mean difference,
-a 95% bootstrap CI on that mean (20,000 resamples), and a paired Wilcoxon
-signed-rank test where n is large enough to carry any resolution. **A
-two-sided Wilcoxon signed-rank test cannot reach p<0.05 at n≤5 regardless
-of effect size** (its minimum attainable two-sided p is 2×0.5ⁿ — 0.25 at
-n=3, 0.0625 at n=5); rows at those n report the bootstrap CI only, which
-remains informative even when the significance test has no power.
+pairing convention throughout Sections 5.1–5.18).
 
-| comparison | n | mean diff (s) | 95% bootstrap CI | Wilcoxon p |
-|---|---:|---:|---|---|
-| SP9 irregular: green_wave − idqn | 10 | +0.959 | [+0.725, +1.176] | 0.0020 |
-| SP14b regular: λ0.50 − λ0.25 | 10 | +0.997 | [+0.757, +1.256] | 0.0020 |
-| SP14b irregular: λ0.50 − λ0.25 | 10 | +0.593 | [+0.330, +0.862] | 0.0039 |
-| SP14 regular (n=3): λ0.50 − λ0.25 | 3 | +0.874 | [+0.669, +1.257] | n/a at n=3 |
-| SP14 irregular (n=3): λ0.50 − λ0.25 | 3 | +0.245 | [−0.117, +0.638] | n/a at n=3 |
-| SP13 r=0.50 (outside band): green_wave − idqn | 3 | −3.091 | [−3.507, −2.793] | n/a at n=3 |
-| SP13 r=0.60 (inside band): green_wave − idqn | 3 | +13.977 | [+13.728, +14.119] | n/a at n=3 |
-| SP13 r=0.75 (inside band): green_wave − idqn | 3 | +3.406 | [+3.024, +3.762] | n/a at n=3 |
-| SP13 r=0.90 (outside band): green_wave − idqn | 3 | −3.693 | [−3.840, −3.457] | n/a at n=3 |
-| SP13e r=0.10 (outside band): green_wave − idqn | 3 | −0.089 | [−0.494, +0.561] | n/a at n=3 |
-| SP13e r=0.20 (inside band): green_wave − idqn | 3 | +6.028 | [+5.641, +6.445] | n/a at n=3 |
-| SP13e r=0.45 (outside band): green_wave − idqn | 3 | −3.320 | [−3.517, −3.219] | n/a at n=3 |
-| single intersection: static60 − actuated_mg60 | 5 | +9.281 | [−8.878, +27.818] | n/a at n=5 |
+**What is reported at which n, and why.** Two limits govern this table, and
+both are applied rather than left to the reader:
 
-Reading this table alongside Sections 5.9–5.16: every n=10 comparison
-(SP9, SP14b) is both a significant Wilcoxon result and a bootstrap CI that
-excludes zero with room to spare — the two project headline claims resting
-on n=10 evidence are the two best-supported statistically. The n=3
-geometry-band comparisons (SP13/SP13e) all have CIs that exclude zero
-despite carrying no significance test, because the underlying seed-to-seed
-variance at this scenario is small relative to the effect sizes involved
-(sd 0.17–0.57s against effects of 3–14s) — informative, but a real test
-should be run once more seeds exist (Section 7). The one CI that does
-*not* exclude zero, SP14's original n=3 irregular-net gap, is exactly the
-comparison SP14 itself flagged as thin and SP14b then widened to n=10
-(where it does exclude zero) — the statistics agree with the project's own
-narrative rather than contradicting it. The single-intersection
-static-vs-actuated comparison (n=5, the project's first headline claim)
-remains genuinely inconclusive by this standard — its own text already
-says as much ("read the 60s row honestly," `docs/RESULTS_WRITEUP.md`) and
-this appendix confirms it quantitatively rather than only by inspection.
+- **A two-sided Wilcoxon signed-rank test cannot reach p<0.05 at n≤5
+  regardless of effect size** — its minimum attainable two-sided p is
+  2×0.5ⁿ (0.25 at n=3, 0.0625 at n=5). No p-value is reported below n=6.
+- **A bootstrap confidence interval is not trustworthy at n=3 either.** It
+  resamples the three observed differences, so its resample mean can take
+  only a handful of discrete values, and the interval it produces describes
+  the spread of those three numbers rather than the sampling distribution
+  of the effect — it systematically understates uncertainty at this n.
+  Earlier drafts of this report quoted n=3 bootstrap CIs as if they carried
+  interval evidence; they do not, and no CI is reported below n=6 here.
+  Small-n rows give **every per-seed difference** instead, which is the
+  whole sample and lets a reader judge it directly.
+
+| comparison | n | mean diff (s) | per-seed diffs (seeds 42, 43, 44, …) | 95% bootstrap CI | Wilcoxon p |
+|---|---:|---:|---|---|---|
+| SP9 irregular: green_wave − idqn | 10 | +0.959 | sd 0.384 across 10 seeds, 10/10 same sign | [+0.725, +1.176] | 0.0020 |
+| SP14b regular: λ0.50 − λ0.25 | 10 | +0.997 | sd 0.424 across 10 seeds, 10/10 same sign | [+0.757, +1.256] | 0.0020 |
+| SP14b irregular: λ0.50 − λ0.25 | 10 | +0.593 | sd 0.452 across 10 seeds, 9/10 same sign | [+0.330, +0.862] | 0.0039 |
+| SP14 regular (n=3): λ0.50 − λ0.25 | 3 | +0.874 | +1.257, +0.697, +0.669 | not reported at n=3 | n/a at n=3 |
+| SP14 irregular (n=3): λ0.50 − λ0.25 | 3 | +0.245 | +0.215, +0.638, **−0.117** | not reported at n=3 | n/a at n=3 |
+| SP13 r=0.50 (outside band): green_wave − idqn | 3 | −3.091 | −3.507, −2.971, −2.793 | not reported at n=3 | n/a at n=3 |
+| SP13 r=0.60 (inside band): green_wave − idqn | 3 | +13.977 | +13.728, +14.084, +14.119 | not reported at n=3 | n/a at n=3 |
+| SP13 r=0.75 (inside band): green_wave − idqn | 3 | +3.406 | +3.024, +3.762, +3.433 | not reported at n=3 | n/a at n=3 |
+| SP13 r=0.90 (outside band): green_wave − idqn | 3 | −3.693 | −3.840, −3.457, −3.783 | not reported at n=3 | n/a at n=3 |
+| SP13e r=0.10 (outside band): green_wave − idqn | 3 | −0.089 | −0.494, **+0.561**, −0.334 | not reported at n=3 | n/a at n=3 |
+| SP13e r=0.20 (inside band): green_wave − idqn | 3 | +6.028 | +5.641, +6.445, +5.997 | not reported at n=3 | n/a at n=3 |
+| SP13e r=0.45 (outside band): green_wave − idqn | 3 | −3.320 | −3.517, −3.219, −3.225 | not reported at n=3 | n/a at n=3 |
+| single intersection: static60 − actuated_mg60 | 5 | +9.281 | +15.75, +43.27, **−1.37**, +10.65, **−21.90** | not reported at n=5 | n/a at n=5 |
+
+(Bold entries mark the seeds whose sign disagrees with their row's mean.)
+
+**Reading this table alongside Sections 5.9–5.16.** The two n=10 comparisons
+(SP9, SP14b) are the project's best-supported claims: both a Wilcoxon result
+and a bootstrap CI that excludes zero with room to spare. One caveat on the
+p-values themselves, in the same spirit as the n≤5 floor above: **p=0.0020
+is the smallest two-sided p a Wilcoxon signed-rank test can return at n=10**
+(2×0.5¹⁰ = 0.00195). Where this table reports it — SP9 and SP14b regular —
+it means "all ten paired differences pointed the same way" and carries no
+information beyond that; it is not evidence of a larger effect than
+SP14b irregular's p=0.0039, which is simply the next value up (9 of 10
+agreeing). The sign counts and effect sizes in the adjacent columns are
+where the strength of these results actually lives.
+
+At n=3, the geometry-band rows (SP13/SP13e) carry no test and no interval,
+but the per-seed columns are informative on their own terms: the paired
+differences have a seed-to-seed standard deviation of 0.17–0.57 s, against
+in-band effects of 3–14 s — one to two orders of magnitude larger than the
+variation these three seeds actually exhibit, with no seed crossing zero at
+any in-band point. That is a statement about how the observed effects
+compare to the observed spread, not an interval estimate, and it is as far
+as n=3 can be pushed; a real test needs more seeds (Section 7). Two rows do
+have a seed crossing zero, and both are exactly where the project's own
+narrative already places its uncertainty: SP14's original n=3 irregular-net
+gap (flagged as thin by SP14 itself, then widened to n=10 by SP14b, where
+all but one seed agree), and SP13e's r=0.10 point, which sits just outside
+the low band's lower edge. The single-intersection static-vs-actuated
+comparison (n=5, the project's first headline claim) is inconclusive on its
+face — its five paired differences range from −21.90 s to +43.27 s and
+change sign twice — which is what its own source text already says ("read
+the 60s row honestly," `docs/RESULTS_WRITEUP.md`).
 
 SP4, SP5, SP15, and SP15b are not included in this table: SP15/SP15b are
 n=1 (no pairing possible, disclosed throughout Section 5.17–5.18 as a
