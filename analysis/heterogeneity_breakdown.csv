@@ -1,0 +1,10 @@
+controller,vtype,mean,std,n_seeds
+green_wave,auto,13.025,0.47,5
+green_wave,car,13.671,0.435,5
+green_wave,moto,13.596,0.134,5
+idqn,auto,16.199,0.312,3
+idqn,car,13.776,0.337,3
+idqn,moto,17.409,0.722,3
+max_pressure,auto,27.489,5.045,5
+max_pressure,car,25.977,4.348,5
+max_pressure,moto,25.082,3.91,5

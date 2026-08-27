@@ -108,6 +108,9 @@ following sections addresses one required element explicitly:
   literature it drew on where applicable.
 - **Section 6** — the project's bottom-line, consolidated result.
 - **Section 7** — overall future work across the whole project.
+- **Section 8** — individual contribution statement.
+- **Appendix A** — paired statistical tests and bootstrap confidence
+  intervals on every headline gap reported in Section 5.
 - **References** — every citation used above, numbered.
 
 ---
@@ -139,23 +142,22 @@ The safety-aware reward term (Section 4.1) is explicitly motivated, per the
 project's own design spec, by **"Samalla & Chunchu 2025: risky two-wheeler
 maneuvers in weak-lane traffic"**
 (`docs/superpowers/specs/2026-07-17-safety-aware-reward-comparison-design.md:12`).
-This project's own repository does not carry a bibliographic record (DOI,
-venue, page range) for that citation beyond the author names and year
-recorded in the spec, and an independent literature search for this report
-did not turn up an exact title match under a 2025 date; the closest
-independently verifiable body of work by the same surnames is Samalla, Kar,
-and Chunchu's published research on powered-two-wheeler conflict and crash
-risk at (mostly unsignalized) intersections in mixed traffic — e.g.
-"Exploratory analysis of evasion actions of powered two-wheeler conflicts at
-unsignalized intersection" (*Accident Analysis & Prevention*) and "Evaluating
-the crash risk of powered two-wheelers in urban mixed traffic environments: a
-conflict threshold perspective" — which documents exactly the phenomenon the
-project's design spec invokes: motorcycles exhibiting "seepage" (working to
-the front of a stopped queue) and thereby taking on disproportionate crash
-exposure relative to their vehicle share. This report treats the citation as
-the project's own stated motivation and flags, transparently, that its exact
-bibliographic identity was not independently re-verified — a caveat readers
-citing this report onward should carry forward.
+An earlier draft of this report could not locate a bibliographic record for
+that citation and flagged it as unverified; a follow-up literature search
+for this revision found and confirms an exact match: Samalla & Chunchu
+(2025), *"Comprehensive safety evaluation of Powered Two-Wheeler riding
+maneuvers in urban mixed traffic with Weak-Lane-Discipline,"* Transportation
+Research Part F: Traffic Psychology and Behaviour, 109, 739–753,
+doi:10.1016/j.trf.2025.01.008 **[18]** — two authors, exactly matching the
+spec's citation, using the project's own "weak-lane-discipline" language,
+and studying precisely the riding maneuvers (following, filtering,
+overtaking, weaving) the reward's motorcycle-vulnerability weighting is
+meant to reflect. Two companion papers by an overlapping author group
+document the closely related phenomenon of motorcycles "seeping" to the
+front of a queue and taking on disproportionate intersection-conflict
+exposure: Kar, Kumar, Samalla, Chunchu & Ravi Shankar (2024) **[19]** and
+Samalla, Kar & Chunchu (2024) **[20]** — cited here as supporting context,
+not as the spec's primary source.
 
 The observation-side PCU weighting (Section 4.2) sits in a separate,
 independently well-established literature: passenger-car-unit equivalency is
@@ -167,7 +169,7 @@ mixed-traffic setting this project's framing invokes, Chandra & Sikdar
 motorcycle/auto-rickshaw/car PCU estimation. This project's own numeric PCU
 weights (Section 4.2) are, however, its own chosen approximation in the
 spirit of that literature, not values taken directly from it or from any
-single cited table — see Section 4.5's disclosed mismatch against
+single cited table — see Section 4.2's disclosed mismatch against
 IRC-referenced values.
 
 **How this project's finding compares.** The literature motivation is about
@@ -632,6 +634,29 @@ Filenames are the primary source for every claim. Sub-projects are presented
 in the order they build on one another (which is also, with one exception
 noted inline, their chronological order).
 
+**At a glance:**
+
+| SP | one-line result |
+|---|---|
+| Pre-SP audit | 6 methodological defects found and fixed; Stage-1 "RL wins" claim withdrawn |
+| SP1 | corridor environment + baselines built (infrastructure) |
+| SP2 | IPPO infrastructure built, validated against Stable-Baselines3 (infrastructure) |
+| SP3 | MAPPO infrastructure built on the same critic seam as SP2 (infrastructure) |
+| SP4 | IPPO loses to green_wave on the corridor, budget-sensitive but does not close |
+| SP5 | IDQN narrows the gap to green_wave vs. IPPO, still loses in-distribution |
+| SP6 | IDQN generalizes across demand *shape* shifts, overfits to demand *magnitude* |
+| SP7 | mid-episode incident: green_wave degrades predictably, reactive controllers vary by seed |
+| SP8 | first flip: IDQN beats green_wave on one irregular-spacing net (n=3) |
+| SP9 | flip confirmed 10/10 seeds, Wilcoxon p=0.0020 (Appendix A) |
+| SP10 | flip holds on 3/3 spacing variants — later shown to be an oversimplified reading (SP13) |
+| SP11 | demand-magnitude curriculum narrows but does not close SP6's overfitting gap |
+| SP12 | incident-aware retraining: no reliable gain on the metric that isolates incident cost |
+| SP13 / SP13e | headline result: two bounded asymmetry-ratio bands, not a monotonic effect; idqn flat throughout |
+| SP13b–d | span confound: crossing count is 1→0→3→3 across span, not bracketed; open |
+| SP14 / SP14b | headline result: λ=0.25 beats the λ=0.5 default, confirmed at n=10, Wilcoxon p≤0.004 |
+| SP15 | MAPPO underperforms IPPO on both geometries, n=1 (smoke test) |
+| SP15b | HP retuning narrows but does not close the MAPPO–IPPO gap |
+
 ### 5.1 Pre-SP: the Stage-1 audit — six defects that reversed the headline result
 
 *(`docs/FINDINGS_2026-08-12.md`)*
@@ -866,7 +891,17 @@ exact for one direction's travel time and increasingly wrong for the other
 as spacing diverges from uniform; `max_pressure` and IDQN react to local
 queue/density state and do not depend on geometry-derived offsets at all, so
 a geometry shift that specifically breaks the fixed plan's coordinating
-assumption leaves them comparatively untouched. **Future work**: this one
+assumption leaves them comparatively untouched. **A methodological
+asymmetry established here and inherited by every geometry sub-project
+after it (SP9–SP13e, Section 5.14)**: `green_wave`'s offset is recomputed
+fresh from each net file's true signal positions (the oracle-optimal plan
+for that exact geometry), while IDQN is the same `corridor_peak`-trained
+checkpoint evaluated **zero-shot**, never retrained per geometry. This is
+disclosed explicitly here rather than left implicit — it means every
+"IDQN beats green_wave" result in this line is IDQN generalizing against
+an oracle-tuned classical baseline, not two equally-adapted controllers;
+see Section 5.14 for the fuller discussion of which way this cuts.
+**Future work**: this one
 result rests on n=3 seeds and one net variant — is the flip a property of
 *this* asymmetry, or of asymmetric spacing generally? (answered by SP9/SP10,
 below). Alongside the main result, this document also ran three cheap
@@ -891,8 +926,15 @@ low-novelty, high-certainty widening of an already-confirmed effect — not a
 new hypothesis test. **What was found**: exactly that. IDQN beats
 `green_wave` on **10 of 10** seeds (mean margin +0.96s ± 0.38s, vs. the n=3
 subset's +1.14s ± 0.19s) — the sign never flips, though the spread nearly
-doubles. **Why**: no new mechanism to explain; this was a statistical
-confirmation exercise. **Future work**: whether the wider n=10 spread
+doubles. **"10 of 10" is now backed by an actual test, not just a sign
+count**: paired Wilcoxon signed-rank on the n=10 differences gives
+p=0.0020, and the 95% bootstrap CI on the mean margin is [+0.73, +1.18]s
+(Appendix A) — an interval that excludes zero by more than its own width,
+despite the effect (~1s) being modest relative to the ~17–19s baseline
+delay and the 0.38s seed standard deviation, which is exactly the scale at
+which a sign-count alone ("10 of 10 seeds") is not yet a statistical test.
+**Why**: no new mechanism to explain; this was a statistical confirmation
+exercise. **Future work**: whether the wider n=10 spread
 reflects real seed-to-seed variability or would itself narrow at a still
 larger n was not explored further; a grid-topology stretch goal (flagged by
 SP10) remains untried.
@@ -995,9 +1037,59 @@ enough to stop constraining the plan much, so the fixed offset degrades
 toward serving the one dominant block well again — a plausible, disclosed-as-
 unverified mechanism story, not confirmed by direct offset-schedule
 inspection. **This is the project's headline, most strongly evidenced
-finding** — see `docs/FINAL_REPORT.md` Section 1 for the full 13-point table
-and its "not a monotonic dose-response" verdict, reproduced there rather
-than duplicated here.
+finding.** The full sweep, delay per completed trip (seconds), span=400 m,
+`corridor_peak` demand:
+
+| r | green_wave | idqn | max_pressure | idqn − green_wave |
+|---|---:|---:|---:|---:|
+| 0.10 | 17.69 | 17.87 | 26.40 | +0.09 (green_wave ahead, ~tied) |
+| 0.20 | 23.11 | 17.19 | 22.58 | −6.03 (idqn ahead) |
+| 0.25 | 22.13 | 16.93 | 21.32 | −5.30 (idqn ahead) |
+| 0.30 | 21.46 | 17.12 | 20.61 | −4.44 (idqn ahead) |
+| 0.35 | 15.88 | 16.88 | 23.82 | +0.96 (green_wave ahead) |
+| 0.45 | 13.59 | 16.97 | 25.19 | +3.32 (green_wave ahead) |
+| **0.50 (regular)** | **13.45** | **16.56** | **25.83** | +3.09 (green_wave ahead) |
+| 0.55 | 31.17 | 16.92 | 25.23 | −14.16 (idqn ahead) |
+| 0.60 | 31.02 | 17.01 | 24.40 | −13.98 (idqn ahead) |
+| 0.70 | 25.05 | 17.10 | 20.68 | −8.00 (idqn ahead) |
+| 0.75 | 20.62 | 17.26 | 21.33 | −3.41 (idqn ahead) |
+| 0.80 | 17.05 | 17.31 | 22.93 | +0.18 (green_wave ahead) |
+| 0.90 | 14.10 | 17.84 | 25.01 | +3.69 (green_wave ahead) |
+
+![Geometry dose-response: delay vs asymmetry ratio, span=400m, shaded bands mark where idqn beats green_wave](figures/geometry_dose_response.png)
+
+Paired-by-seed statistics on four representative points (n=3, seeds 42–44
+common to both controllers; see Appendix A for the full table and the
+caveat that a two-sided Wilcoxon test cannot reach conventional
+significance at n=3 regardless of effect size — the bootstrap CI is the
+right evidence to read here): at r=0.60 (inside the high band),
+green_wave−idqn = +13.98s, 95% bootstrap CI [+13.73, +14.12]; at r=0.90
+(outside it), −3.69s, CI [−3.84, −3.46]. Both CIs exclude zero by a wide
+margin relative to their width — the band boundaries are not an artifact
+of n=3 noise, even though the significance test itself has no power to say
+so at this n. See `docs/FINAL_REPORT.md` Section 1 for the narrative
+write-up this table is drawn from.
+
+**A methodological asymmetry to disclose, and which way it cuts.** This
+comparison is not apples-to-apples in one specific sense: `green_wave`'s
+offset (Section 4.3) is *recomputed from each geometry's true signal
+positions* — it is always the oracle-optimal fixed-offset plan for the
+exact net being evaluated, which is also how a real green-wave deployment
+would be configured for a known corridor. `idqn`, by contrast, is a single
+policy checkpoint trained once on the regular (r=0.50) net and evaluated
+**zero-shot** — never retrained or fine-tuned — on every other geometry in
+the table. So the comparison is "oracle-tuned classical control" vs.
+"frozen policy asked to generalize," not two controllers with equal access
+to the test geometry. This cuts in idqn's favour for the flatness result
+(16.56–17.87s across 13 points is more remarkable against an oracle
+baseline than against another frozen one) and means the bounded bands
+should be read as "green_wave, even optimally re-tuned per geometry, loses
+to a policy that was not given the same privilege" — if anything an
+understatement of idqn's robustness, not an overstatement of green_wave's
+weakness. A fully symmetric comparison would need either an idqn retrained
+per geometry (not attempted — the zero-shot question was deliberately the
+one asked, per SP8's own framing) or a green_wave restricted to one
+fixed offset across all geometries (not attempted either).
 
 **Future work, deliberately not chased further this project (per the
 2026-08-27 handoff decision)**: SP13b–SP13d (below) extended this sweep
@@ -1079,18 +1171,36 @@ geometries. **What was expected**: per the design spec's own framing, a
 smooth trade-off across [0,1] — more safety weight, monotonically less
 efficiency. **What was found**: `safety_total` does fall monotonically with
 λ, as designed — but `delay_per_trip` does **not**: it *dips* at λ=0.25,
-rises back through λ=0.5, then climbs sharply from λ=0.75 on. λ=0.25 beats
-both λ=0.5 (the project's own default) and λ=0.0 (pure efficiency, no
-safety term at all) on delay, on both geometries — λ=0.0 is dominated
-outright. **Why**: the efficiency/safety frontier has a knee around
-λ=0.25–0.5, not a smooth trade-off — most of the safety benefit is already
-captured by λ=0.25, and the real cost only appears from λ≥0.75 onward.
+rises back through λ=0.5, then climbs sharply from λ=0.75 on:
+
+| λ | regular delay (n=3) | irregular delay (n=3) | regular delay (n=10) | irregular delay (n=10) |
+|---|---:|---:|---:|---:|
+| 0.00 | 17.08 | 22.58 | — | — |
+| **0.25** | **15.69** | **18.23** | **15.72** | **17.93** |
+| 0.50 (default) | 16.56 | 18.48 | 16.72 | 18.52 |
+| 0.75 | 20.93 | 22.16 | — | — |
+| 1.00 | 23.84 | 24.98 | — | — |
+
+![Delay vs safety weight lambda, both geometries, n=3 full curve with n=10 confirmation at 0.25/0.5](figures/lambda_curve.png)
+
+λ=0.25 beats both λ=0.5 (the project's own default) and λ=0.0 (pure
+efficiency, no safety term at all) on delay, on both geometries — λ=0.0 is
+dominated outright. **Why**: the efficiency/safety frontier has a knee
+around λ=0.25–0.5, not a smooth trade-off — most of the safety benefit is
+already captured by λ=0.25, and the real cost only appears from λ≥0.75 on.
 Flagged at n=3 as possibly thin (the irregular-net gap, 0.25s, was smaller
 than this project's typical seed noise elsewhere), SP14b widened just the
 {0.25, 0.5} comparison to n=10 (7 new seeds trained) and found **the gap
 grew, not shrank** — irregular 0.245s→0.593s (9/10 seeds agree), regular
 0.874s→0.997s (10/10 agree) — the opposite of what an n=3 sampling artifact
-would do. **Verdict**: closed, confirmed; λ=0.5 remains defensible (near the
+would do. **This time the n is large enough for a real test, and it passes
+one**: paired Wilcoxon signed-rank on the n=10 gap gives p=0.0020 (regular)
+and p=0.0039 (irregular), 95% bootstrap CIs [+0.76, +1.26]s (regular) and
+[+0.33, +0.86]s (irregular) — neither interval touches zero (Appendix A).
+The n=3 regular-net CI, by contrast, was already tight enough to exclude
+zero ([+0.67, +1.26]s) but the n=3 irregular-net CI was not ([−0.12,
++0.64]s) — exactly the "possibly thin" read SP14 itself gave before SP14b's
+widening resolved it. **Verdict**: closed, confirmed; λ=0.5 remains defensible (near the
 knee, small cost relative to λ=0.25) but was never what a systematic sweep
 would have picked, and the project can now say *why* 0.5 sits where it does
 on a measured curve rather than that it was never checked. **Future work**:
@@ -1152,6 +1262,66 @@ improvement and `lr_low`'s collapse; a genuinely-competitive-with-IPPO MAPPO
 configuration is **not ruled out**, only not found within this project's
 bounded, disclosed attempt.
 
+### 5.19 Post-hoc: does any result actually depend on the heterogeneous mix?
+
+*(new analysis for this report, `analysis/heterogeneity_breakdown.py`, reading
+existing `corridor_peak`/regular-net tripinfo logs already produced by SP4–SP5
+— no new simulation.)*
+
+**What was tried / why.** Every headline result in Sections 5.1–5.18 is a
+geometry, algorithm, or reward-weight effect measured on the *aggregate*
+delay-per-trip metric. None of them, as reported, actually differ by vehicle
+type — a fair reading of the project up to this point is that it is
+*motivated* by heterogeneous, weak-lane-discipline traffic (Section 1.1)
+without any result that specifically depends on the mix being heterogeneous
+rather than homogeneous. This checks that directly: delay per completed
+trip, disaggregated by vehicle type, for the three corridor controllers at
+their project-default settings (`corridor_peak`, regular net, λ=0.5 for
+idqn, min_green=10):
+
+| controller | moto (59–60% of trips) | auto (25–26%) | car (15%) |
+|---|---:|---:|---:|
+| green_wave | 13.60 ± 0.13 | 13.02 ± 0.47 | 13.67 ± 0.44 |
+| max_pressure | 25.08 ± 3.91 | 27.49 ± 5.05 | 25.98 ± 4.35 |
+| **idqn** | **17.41 ± 0.72** | **16.20 ± 0.31** | **13.78 ± 0.34** |
+
+(mean ± sd across seeds, seconds per completed trip; n=5 for green_wave/
+max_pressure, n=3 for idqn.)
+
+**What was found.** `green_wave` and `max_pressure` are close to
+type-uniform — every vehicle type sees roughly the same delay under a
+control law that does not condition on vehicle type at all. **`idqn` is
+not**: motorcycles see the worst delay (17.41s), cars the best (13.78s,
+matching green_wave's car delay almost exactly), a 3.6s spread the other
+two controllers don't show. **Why**: this is not surprising once the
+reward is inspected closely (Section 4.1) — the *efficiency* term
+(`diff_waiting_time`) is raw, un-weighted waiting time, identical
+regardless of which vehicle type is waiting; only the *safety* term is
+vulnerability-weighted, and only for hard-braking/exposure events, not for
+ordinary queueing delay. Nothing in the reward idqn was trained against
+penalises deprioritising motorcycles' throughput specifically, so a policy
+that learns to do so pays no direct cost for it in training, even though
+motorcycles are both the most numerous vehicle type in this project's mix
+and the one the reward's own vulnerability weighting treats as most
+at-risk (Section 4.1).
+
+**This is a genuine, if narrow, heterogeneity-specific finding**: IDQN's
+aggregate delay advantage/disadvantage numbers reported throughout Section
+5 are a trip-count-weighted average over a policy that treats vehicle
+types unequally, in a direction the reward does not currently see or
+penalise. It does not overturn any headline result — the aggregate numbers
+are still correct averages — but it means "safety-aware" (the reward's own
+framing) currently means "vulnerability-aware for braking and exposure
+events," not "vulnerability-aware for who gets to move." **Future work**:
+extend the reward's efficiency term (or add a third term) so that delay
+imposed on a more vulnerable vehicle type is weighted at least as heavily
+as delay imposed on a car, and re-run the λ ablation (Section 5.16) under
+that revised reward to see whether the same knee-shaped frontier survives;
+also disaggregate `safety_total` itself by vehicle type (not attempted
+here — the per-window safety logs are not currently vType-tagged the way
+tripinfo is), and repeat this breakdown on the irregular net and at other λ
+values to check whether the disparity is specific to λ=0.5 or general.
+
 ---
 
 ## 6. Bottom line — the project's consolidated result
@@ -1173,23 +1343,71 @@ prior consolidation of its three fully-closed headline threads:
    beats `green_wave` inside two bounded bands of the asymmetry-ratio space
    (`r≈[0.51,0.80]` and `r≈[0.10,0.34]` at span=400 m), not monotonically
    with irregularity, and IDQN's zero-shot policy is flat and
-   geometry-invariant across every span and ratio tested (SP8–SP13e).
+   geometry-invariant across every span and ratio tested (SP8–SP13e). This
+   is a comparison between an oracle-tuned classical plan and a frozen,
+   never-retrained learned policy, not two equally-adapted controllers
+   (Section 5.9/5.14) — a handicap that cuts in IDQN's favour, not
+   against it. Bootstrap CIs on representative points, and a Wilcoxon
+   p=0.0020 on the n=10-confirmed flip (SP9), exclude zero (Appendix A).
 4. **The safety-weight default**: λ=0.5 was never efficiency-optimal;
-   λ=0.25 beats it on delay on both geometries tested, confirmed and grown
-   at n=10 seeds (SP14, SP14b).
+   λ=0.25 beats it on delay on both geometries tested, confirmed at n=10
+   seeds with paired Wilcoxon p≤0.004 on both geometries (SP14, SP14b,
+   Appendix A).
 5. **Coordination (MAPPO)**: no evidence explicit centralised-critic
    coordination beats independent learning at this project's scale, even
    after HP retuning aimed at the most obvious confound (SP15, SP15b) — a
    real, disclosed negative result against the project's own original
-   thesis claim (Section 2.4).
+   thesis claim (Section 2.4). n=1 throughout; no statistical test applies.
+6. **Heterogeneity is this project's framing, not (yet) an independent
+   result**: findings 1–5 are all geometry, algorithm, or reward-weight
+   effects that do not depend on the traffic mix being heterogeneous. The
+   one vehicle-type-disaggregated check run for this report (Section 5.19)
+   found IDQN, specifically, imposes uneven delay by vehicle type (worst on
+   motorcycles, best on cars) in a way the other two controllers do not —
+   a real, narrow heterogeneity-specific finding, but not yet the kind of
+   result that would make the mix load-bearing for findings 1–5.
 
 ---
 
 ## 7. Overall future work
 
-Consolidated across every open thread named in Sections 5.1–5.18, in
-descending order of how directly it bears on a currently-reported result:
+Consolidated across every open thread named in Sections 5.1–5.19, plus the
+two most consequential external-validity gaps a transport-safety and a
+benchmarking reader would each flag first:
 
+- **"Safety-aware" is currently measured only by this project's own
+  internal `safety_total` quantity (Section 4.1), never by a surrogate
+  safety measure the transport-safety field would recognise independently**
+  — a conflict count, time-to-collision (TTC), or post-encroachment time
+  (PET), in the style of the Surrogate Safety Assessment Model (SSAM)
+  tradition. None of this project's runs currently log the trajectory data
+  (SUMO FCD output) an SSAM-style conflict count needs; the closest existing
+  instrumentation is the per-signal queue-timeseries tooling built for
+  SP13c/d (Section 5.15), which is not a conflict detector. Producing even
+  one SSAM-style conflict count for one controller/scenario pair — the
+  single highest-value remaining experiment for the safety half of this
+  project's framing — was not attempted in this report.
+- **Every result in this project is measured on one hand-built, 3-signal
+  toy corridor.** The disclosure of that fact (Section 3.1) is honest but
+  does not substitute for evidence that the findings survive contact with
+  a standard, independently-built benchmark network. RESCO **[11]**
+  (Section 2.3), already this project's own methodological reference for
+  the IDQN choice, ships real Cologne/Luxembourg/Salt-Lake-City-derived
+  networks precisely for this purpose. Reproducing even one of this
+  project's headline effects (most feasibly the λ ablation, Section 5.16,
+  since it does not depend on this project's own custom geometry-sweep
+  machinery) on one RESCO network would convert "we built a toy corridor
+  and it shows X" into "X survives a standard benchmark" — the single
+  highest-value remaining experiment for the generalisability half of this
+  project's framing. Not attempted in this report; a multi-hour training
+  run against unfamiliar tooling, not a same-day fix.
+- **The heterogeneity check in Section 5.19 is a single data point, not a
+  sweep.** It covers one controller set, one geometry, one λ, one demand
+  scenario. Whether IDQN's per-vehicle-type delay disparity holds on the
+  irregular net, at other λ values, or for `max_pressure`/`green_wave`
+  under different demand compositions is untested; and `safety_total`
+  itself (as opposed to delay) has not been disaggregated by vehicle type
+  at all, since the per-window safety logs are not currently vType-tagged.
 - **The span=450/550 non-learning-controller congestion anomaly**
   (Section 5.15) is the largest unresolved question in the project:
   `green_wave` and `max_pressure` both spike in aggregate delay at these two
@@ -1234,6 +1452,81 @@ descending order of how directly it bears on a currently-reported result:
   fit any arrival rate. Validating the project's qualitative findings
   (the bounded-band geometry effect, the λ knee) against even one
   real-world demand profile is untried.
+
+---
+
+## 8. Individual contributions
+
+*(Placeholder — this section requires input from the group and has not been
+filled in. List each member and what they specifically did: which
+sub-projects they led or contributed to, what code/analysis/writing is
+attributable to them, and any role that doesn't show up as a commit, e.g.
+experiment design, review, or presentation work. `git log --format='%an'
+docs/ analysis/ *.py | sort | uniq -c | sort -rn` is a starting point for
+who touched what, but commit authorship alone is not a substitute for each
+member describing their own actual contribution.)*
+
+- Member 1 — name, contribution
+- Member 2 — name, contribution
+- Member 3 — name, contribution
+- (add or remove rows to match the actual group roster)
+
+---
+
+## Appendix A — statistical tests on every headline gap
+
+Computed once for this report (`analysis/headline_stats.py`), reading only
+already-committed per-seed CSVs — no new simulation. Every headline gap in
+Sections 5.9–5.16 is a **paired** comparison (same numbered seed = same
+demand realisation, different controller/λ, the project's own established
+pairing convention throughout Sections 5.1–5.18): paired mean difference,
+a 95% bootstrap CI on that mean (20,000 resamples), and a paired Wilcoxon
+signed-rank test where n is large enough to carry any resolution. **A
+two-sided Wilcoxon signed-rank test cannot reach p<0.05 at n≤5 regardless
+of effect size** (its minimum attainable two-sided p is 2×0.5ⁿ — 0.25 at
+n=3, 0.0625 at n=5); rows at those n report the bootstrap CI only, which
+remains informative even when the significance test has no power.
+
+| comparison | n | mean diff (s) | 95% bootstrap CI | Wilcoxon p |
+|---|---:|---:|---|---|
+| SP9 irregular: green_wave − idqn | 10 | +0.959 | [+0.725, +1.176] | 0.0020 |
+| SP14b regular: λ0.50 − λ0.25 | 10 | +0.997 | [+0.757, +1.256] | 0.0020 |
+| SP14b irregular: λ0.50 − λ0.25 | 10 | +0.593 | [+0.330, +0.862] | 0.0039 |
+| SP14 regular (n=3): λ0.50 − λ0.25 | 3 | +0.874 | [+0.669, +1.257] | n/a at n=3 |
+| SP14 irregular (n=3): λ0.50 − λ0.25 | 3 | +0.245 | [−0.117, +0.638] | n/a at n=3 |
+| SP13 r=0.50 (outside band): green_wave − idqn | 3 | −3.091 | [−3.507, −2.793] | n/a at n=3 |
+| SP13 r=0.60 (inside band): green_wave − idqn | 3 | +13.977 | [+13.728, +14.119] | n/a at n=3 |
+| SP13 r=0.75 (inside band): green_wave − idqn | 3 | +3.406 | [+3.024, +3.762] | n/a at n=3 |
+| SP13 r=0.90 (outside band): green_wave − idqn | 3 | −3.693 | [−3.840, −3.457] | n/a at n=3 |
+| SP13e r=0.10 (outside band): green_wave − idqn | 3 | −0.089 | [−0.494, +0.561] | n/a at n=3 |
+| SP13e r=0.20 (inside band): green_wave − idqn | 3 | +6.028 | [+5.641, +6.445] | n/a at n=3 |
+| SP13e r=0.45 (outside band): green_wave − idqn | 3 | −3.320 | [−3.517, −3.219] | n/a at n=3 |
+| single intersection: static60 − actuated_mg60 | 5 | +9.281 | [−8.878, +27.818] | n/a at n=5 |
+
+Reading this table alongside Sections 5.9–5.16: every n=10 comparison
+(SP9, SP14b) is both a significant Wilcoxon result and a bootstrap CI that
+excludes zero with room to spare — the two project headline claims resting
+on n=10 evidence are the two best-supported statistically. The n=3
+geometry-band comparisons (SP13/SP13e) all have CIs that exclude zero
+despite carrying no significance test, because the underlying seed-to-seed
+variance at this scenario is small relative to the effect sizes involved
+(sd 0.17–0.57s against effects of 3–14s) — informative, but a real test
+should be run once more seeds exist (Section 7). The one CI that does
+*not* exclude zero, SP14's original n=3 irregular-net gap, is exactly the
+comparison SP14 itself flagged as thin and SP14b then widened to n=10
+(where it does exclude zero) — the statistics agree with the project's own
+narrative rather than contradicting it. The single-intersection
+static-vs-actuated comparison (n=5, the project's first headline claim)
+remains genuinely inconclusive by this standard — its own text already
+says as much ("read the 60s row honestly," `docs/RESULTS_WRITEUP.md`) and
+this appendix confirms it quantitatively rather than only by inspection.
+
+SP4, SP5, SP15, and SP15b are not included in this table: SP15/SP15b are
+n=1 (no pairing possible, disclosed throughout Section 5.17–5.18 as a
+smoke test rather than a statistically-powered claim), and SP4/SP5's own
+per-seed budget-sensitivity checks are reported in their own findings
+documents at n=3, carrying the same n=3 significance-test caveat as the
+SP13/SP13e rows above.
 
 ---
 
@@ -1295,13 +1588,20 @@ descending order of how directly it bears on a currently-reported result:
 17. Chandra, S., & Sikdar, P. K. (2000). *Factors affecting PCU in mixed
     traffic situations on urban roads.* Road & Transport Research, 9(3),
     40–50.
-18. Samalla, K., & Chunchu, M. (2025), as cited in this project's own design
-    document (`docs/superpowers/specs/2026-07-17-safety-aware-reward-comparison-design.md`),
-    on risky two-wheeler maneuvers in weak-lane-discipline traffic. Exact
-    venue/DOI not independently re-verified for this report — see Section
-    2.2 for the closest independently-located related work by the same
-    authors (powered-two-wheeler conflict and crash-risk studies in mixed
-    urban traffic).
+18. Samalla, S., & Chunchu, M. (2025). *Comprehensive safety evaluation of
+    Powered Two-Wheeler riding maneuvers in urban mixed traffic with
+    Weak-Lane-Discipline.* Transportation Research Part F: Traffic
+    Psychology and Behaviour, 109, 739–753. doi:10.1016/j.trf.2025.01.008.
+    Verified exact match for the citation in this project's own design
+    document (`docs/superpowers/specs/2026-07-17-safety-aware-reward-comparison-design.md:12`).
+19. Kar, P., Kumar, S., Samalla, S., Chunchu, M., & Ravi Shankar, K. V. R.
+    (2024). *Exploratory analysis of evasion actions of powered two-wheeler
+    conflicts at unsignalized intersection.* Accident Analysis & Prevention,
+    194, 107363. doi:10.1016/j.aap.2023.107363.
+20. Samalla, S., Kar, P., & Chunchu, M. (2024). *Evaluating the crash risk of
+    powered two-wheelers in urban mixed traffic environments: a conflict
+    threshold perspective.* International Journal of Injury Control and
+    Safety Promotion, 31(3), 477–486. doi:10.1080/17457300.2024.2344161.
 
 ---
 
