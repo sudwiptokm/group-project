@@ -178,3 +178,60 @@ absolute geometry. Confirming any of those needs a different kind of
 evidence than a schedule inspection can produce: a space-time trajectory or
 per-signal queue-length timeseries from the actual sim run, comparing
 span=400/550/700 at r=0.50 directly. Not attempted here.
+
+## Second addendum: queue timeseries localize it to C3's own green phase, not spillback
+
+Follow-up to the above's own suggestion. `analysis/queue_timeseries_span_compare.py`
+runs green_wave on the three r=0.50 nets (seed 42, same `corridor_peak`/
+`min_green=10`/`TIME_TO_TELEPORT=300` protocol as the sweeps) and records,
+every decision step, each signal's incoming-arterial-lane halting count and
+current `green_phase` index, plus the downstream `C3_E` edge's occupancy.
+
+**The anomaly is entirely localized to C3, not C1 or C2:**
+
+| span | C1 halting (mean) | C2 halting (mean) | C3 halting (mean) | C3 max | C3 pct steps ≥5 |
+|---|---:|---:|---:|---:|---:|
+| 400 | 1.04 | 0.11 | 0.21 | 5 | 0.28% |
+| 550 | 1.04 | 0.40 | **2.50** | **14** | **27.5%** |
+| 700 | 1.01 | 0.06 | 0.10 | 3 | 0.0% |
+
+C1 is essentially identical across all three spans (it always sees the same
+`W_C1` entry demand, unaffected by anything downstream) — a sanity check that
+demand itself is span-invariant, as expected since all three nets share the
+same route file. C2 is slightly elevated at span=550 (0.40 vs 0.06-0.11) but
+nowhere near C3's blowup.
+
+**Splitting C3 by its own `green_phase` rules out the two obvious
+explanations:**
+
+- **Not downstream spillback.** `C3_E` (the edge immediately downstream of
+  C3) shows zero halting at all three spans — nothing is blocking C3's own
+  discharge from further down the corridor.
+- **Not a phase-index/semantics mismatch.** The raw `tlLogic` phase state
+  strings for C3 in all three `.net.xml` files are byte-identical
+  (`GGGgrrrrGGGgrrrr` / `rrrrGGGgrrrrGGGg`, same durations) — `netconvert`
+  did not assign the arterial movement to a different phase index at a
+  different span, which would have been a real methodology bug in every
+  sweep run so far had it been true.
+- **The queue is elevated specifically during C3's phase 0 (nominally its
+  own green for the arterial), not phase 1:** span=550's phase-0 mean is
+  4.60 (max 14, on the very lane that phase is supposed to be discharging);
+  span=400/700's phase-0 means are 0.42/0.19. A dissipating residual from a
+  late-starting green would show up exactly this way (elevated during green,
+  as the backlog clears), which points back toward a timing/discharge
+  interaction rather than a capacity or routing difference — but this
+  single-seed diagnostic can't distinguish "green starts a few seconds too
+  late every cycle, backlog never fully clears" from "something else limits
+  C3's discharge rate specifically at this geometry." Both are consistent
+  with the data collected so far.
+
+**Status: narrowed, not solved.** The anomaly is now pinned to one specific
+signal (C3) and one specific phase (its own arterial green), with spillback
+and phase-mislabeling both ruled out by direct evidence. The remaining
+question — why C3's discharge falls behind demand specifically at span=550,
+when the same phase durations, same demand, and the schedule's own offset
+math (previous addendum) all look unremarkable — needs per-vehicle or
+per-cycle trace data at C3 itself (e.g., plotting each cycle's actual green
+start/end against arrival times over the full episode) to resolve, which is
+out of scope for this pass.
+
