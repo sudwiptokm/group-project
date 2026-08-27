@@ -105,3 +105,76 @@ across all three tested spans; only green_wave's failure shape moves.
   open, carried forward again.
 - **idqn's checkpoints are still n=3** (SP5's constraint), same caveat as
   SP13/SP13b.
+
+## Addendum: inspecting green_wave's offset schedule rules it out as the cause
+
+Follow-up to this doc's own open question about the r=0.50 anomaly.
+`corridor_control.green_wave_offsets` sets each downstream signal's offset to
+exactly the free-flow travel time from C1 (`(x - x0) / free_flow_speed`);
+`fixed_time_phase` then holds a `phase_seconds`-long phase, cycling every
+`num_phases * phase_seconds`. With `min_green=10`, `yellow_time=3`,
+`delta_time=5` (`corridor_baseline.py`'s constants), `plan_phase_seconds`
+gives 15s, and the corridor's 2-phase signals give a 30s cycle. In continuous
+time this offset construction is exact by algebra — a platoon leaving C1 at
+the start of its green always arrives at a downstream signal exactly as that
+signal's own green starts, for *any* offset value, so geometry can't matter
+in the ideal case. The only place span-dependence can enter is the 5-second
+decision grid: env actions (and therefore phase requests) are only issued
+every `delta_time=5s`, so each signal's true transition lands at the first
+grid point at or after the ideal continuous transition time, a quantization
+delay of `ceil(offset/5)*5 - offset` (0 to 5s), which then also caps the real
+overlap between a signal's actual green window and the arriving platoon's
+travel-time-implied window.
+
+Computed for the three spans' r=0.50 (symmetric) nets, C1→C2 and C1→C3:
+
+| span | signal | distance | offset | quantization delay | green/platoon overlap |
+|---|---|---:|---:|---:|---:|
+| 400 | C2 | 200m | 14.40s | 0.60s | 96.0% |
+| 400 | C3 | 400m | 28.80s | 1.20s | 92.0% |
+| 550 | C2 | 275m | 19.80s | 0.20s | 98.7% |
+| 550 | C3 | 550m | 39.60s | 0.40s | 97.3% |
+| 700 | C2 | 350m | 25.20s | 4.80s | 68.0% |
+| 700 | C3 | 700m | 50.40s | 4.60s | 69.3% |
+
+**This directly contradicts the observed ranking.** By quantization delay
+alone, span=550 should be the *best*-aligned of the three (smallest delay,
+highest overlap on both signals) and span=700 the worst — but the actual
+r=0.50 delay/trip ranks span=550 worst (23.15s), span=700 middle (16.72s),
+span=400 best (13.46s). The offset-schedule math, worked through carefully,
+predicts the opposite of what happened.
+
+Two more checks against alternative schedule-based explanations, both also
+negative:
+
+- **Edge length vs. node distance.** `_green_wave_inputs` computes offsets
+  from node coordinates, but the actual routable edge is ~22m shorter than
+  the node-to-node distance at every span (178m/200m, 253m/275m, 328m/350m —
+  junction geometry eating a near-constant absolute amount), meaning real
+  travel time is always slightly *less* than the offset assumes. This bias
+  scales smoothly and monotonically with span; it can't produce a spike
+  specific to span=550.
+- **The SP7 incident closure isn't a factor here.** `corridor_baseline.run`
+  only applies `INCIDENT` when explicitly requested (`incident=True`); these
+  sweep runs call `cb.run(..., net_file=net_file)` without it, confirmed by
+  filename (no `_incident` suffix on the tripinfo output actually read).
+- **The delay is a uniform per-trip effect, not rare gridlock outliers**
+  (checked the raw `tripinfo.xml` `timeLoss` distributions for seed 42 at all
+  three spans): median tracks mean closely and the whole distribution scales
+  together (span=550: mean 22.76s/median 22.17s/p99 52.87s vs span=400: mean
+  13.44s/median 13.11s/p99 33.26s) — no heavy tail or bimodal spike that would
+  indicate a specific spillback/deadlock event unique to span=550. This is
+  consistent with a genuine, pervasive miscoordination affecting most trips
+  similarly, just not one the offset/quantization schedule predicts.
+
+**Conclusion: the deterministic control-logic layer is not the cause.** The
+offset schedule, its grid quantization, and the edge-length/node-distance gap
+are all clean, smooth, and (for the two quantifiable ones) actively point the
+wrong direction. Whatever produces span=550's anomalous r=0.50 baseline lives
+in emergent SUMO dynamics this layer doesn't model — car-following/queue
+discharge behavior, junction internal geometry effects on turning movements,
+or an interaction between the fixed demand pattern and this specific
+absolute geometry. Confirming any of those needs a different kind of
+evidence than a schedule inspection can produce: a space-time trajectory or
+per-signal queue-length timeseries from the actual sim run, comparing
+span=400/550/700 at r=0.50 directly. Not attempted here.
