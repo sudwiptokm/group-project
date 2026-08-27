@@ -111,3 +111,51 @@ green_wave and max_pressure aren't.
 - **Why idqn is immune is still just an observation.** No inspection of
   idqn's actual learned policy/Q-values at the affected geometries has been
   done to confirm what it's doing differently.
+
+## Addendum: max_pressure's queue localization contradicts the "shared mechanism" reading above
+
+The main results section above inferred a shared capacity/geometry effect
+from aggregate delay/trip numbers alone (green_wave and max_pressure both
+elevated at r=0.50, spans 450/550). Pointing
+`analysis/queue_timeseries_span_compare.py` at max_pressure directly, across
+all four spans, does not support that reading — **the two controllers' worst
+queues are not co-located the same way:**
+
+| controller | span | C1 mean | C2 mean | C3 mean | C3 max | C3 pct≥5 |
+|---|---:|---:|---:|---:|---:|---:|
+| green_wave | 400 | 1.04 | 0.11 | 0.21 | 5 | 0.28% |
+| green_wave | 450 | 1.06 | 1.34 | **2.71** | 15 | 29.17% |
+| green_wave | 550 | 1.04 | 0.40 | **2.50** | 14 | 27.50% |
+| green_wave | 700 | 1.01 | 0.06 | 0.10 | 3 | 0.00% |
+| max_pressure | 400 | 1.07 | 0.55 | 2.02 | 13 | 18.75% |
+| max_pressure | 450 | 1.07 | 0.16 | 1.47 | 11 | 15.83% |
+| max_pressure | 550 | 1.10 | **0.85** | **0.12** | 5 | 0.14% |
+| max_pressure | 700 | 1.08 | 0.17 | 1.13 | 13 | 6.11% |
+
+green_wave's C3 queue is worst exactly at the two spans (450, 550) where its
+aggregate delay spikes, and clean at 400/700 — consistent with a single
+localized story. max_pressure's C3 queue does *not* follow the same shape:
+it's substantial at 400, 450, *and* 700, and — the sharpest contradiction —
+**span=550 is max_pressure's best C3 point (0.12 mean, 0.14% ≥5), not a bad
+one**, even though span=550 is one of the two spans where max_pressure's
+own aggregate r=0.50 delay was elevated (23.48s). Whatever is driving
+max_pressure's delay at span=550 is concentrated somewhere else — its C2
+queue is elevated there relative to its own other spans (0.85 vs 0.16-0.55),
+a different signal entirely.
+
+**This weakens, not confirms, the "shared capacity/geometry effect"
+inference this doc drew from aggregate numbers alone.** The two controllers
+do both show elevated r=0.50 delay at spans 450/550 in the trip-level data,
+but the per-signal instrumentation shows their actual congestion is not in
+the same place: green_wave's problem is consistently C3; max_pressure's
+moves around (C3 at 400/450/700, C2 at 550) and is *absent* from C3 at
+exactly the span where green_wave's is worst. Two readings are both
+consistent with this: either the aggregate similarity was partly coincidence
+(two controllers independently struggling with a given geometry for
+different local reasons), or there is a shared geometry-driven cause whose
+effect on any given signal depends on each controller's own reactive/fixed
+behavior (max_pressure's queue-driven phase selection could plausibly
+relocate a bottleneck to wherever it currently has the least pressure,
+unlike green_wave's fixed schedule). This data doesn't distinguish those two
+readings, and the root mechanism remains genuinely open — if anything, more
+open than this doc's main section suggested.
