@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SP13e low-ratio (short block first) geometry dose-response sweep point
+     r=0.45 (analysis/build_geometry_sweep_nets_lowr.py). Same 3-signal
+     arterial topology as corridor.nod.xml, C1@0/C3@400 fixed (SP13's
+     original span), only C2's position varies: nominal 180m/220m, with
+     the SHORT block now first (C1-C2) rather than second, mirroring the
+     original high-r sweep's convention in the opposite direction. Reuses
+     corridor.edg.xml verbatim (edges reference node ids, not coordinates). -->
+<nodes>
+    <node id="W"  x="-200" y="0"    type="priority"/>
+    <node id="C1" x="0"    y="0"    type="traffic_light"/>
+    <node id="C2" x="180"  y="0"    type="traffic_light"/>
+    <node id="C3" x="400"  y="0"    type="traffic_light"/>
+    <node id="E"  x="600"  y="0"    type="priority"/>
+
+    <node id="N1" x="0"    y="200"  type="priority"/>
+    <node id="S1" x="0"    y="-200" type="priority"/>
+    <node id="N2" x="180"  y="200"  type="priority"/>
+    <node id="S2" x="180"  y="-200" type="priority"/>
+    <node id="N3" x="400"  y="200"  type="priority"/>
+    <node id="S3" x="400"  y="-200" type="priority"/>
+</nodes>
