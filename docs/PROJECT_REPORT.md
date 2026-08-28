@@ -714,12 +714,19 @@ disagree because the two networks are not the same control problem.
    rows at every floor; no IDQN or IPPO checkpoint was ever trained at any
    floor other than 10 s (every model file in `models/` and every corridor
    evaluation log carries the `mg10` tag). Whether a learned controller has
-   its own, different optimum is untested. Note which way this cuts: the
+   its own, different optimum is untested. Note which way this cuts, and
+   where it stops cutting: the
    floor was selected at the value that maximises `green_wave`'s own
-   performance, so every "green_wave wins" result in Section 5 is measured
-   against the classical baseline at its best, and every "IDQN beats
-   green_wave" result (Sections 5.9, 5.14) is a win over the classical plan
-   at its best floor — conservative in both directions, but it does leave
+   performance *on the regular corridor*, so every "green_wave wins" result
+   on that net (Section 6, finding 2) is measured against the classical
+   baseline at its best — conservative in the direction that matters there.
+   That qualifier does **not** carry over to the irregular geometries where
+   the headline reversal lives (Sections 5.9, 5.14): the sweep that returned
+   10 s was run on the regular net, whose inter-signal travel times differ
+   from every irregular net's by construction, so 10 s is not established as
+   `green_wave`'s own optimum on any of them. On those nets the direction of
+   this bias is simply unknown, and the "IDQN beats green_wave at
+   green_wave's best floor" reading is not available. Either way it leaves
    open that IDQN's numbers throughout are not at *its* best floor. The
    same caveat applies to `max_pressure`, whose own optimum is 15 s, not
    10 s (19.43 s vs. 26.52 s in the table above): wherever it appears in a
@@ -1031,13 +1038,15 @@ a geometry shift that specifically breaks the fixed plan's coordinating
 assumption leaves them comparatively untouched. **A methodological
 asymmetry established here and inherited by every geometry sub-project
 after it (SP9–SP13e, Section 5.14)**: `green_wave`'s offset is recomputed
-fresh from each net file's true signal positions (the oracle-optimal plan
-for that exact geometry), while IDQN is the same `corridor_peak`-trained
+fresh from each net file's true signal positions (the oracle-optimal
+*offset* plan for that exact geometry; its cycle length is not re-optimised
+— Section 4.7, limitation 2), while IDQN is the same `corridor_peak`-trained
 checkpoint evaluated **zero-shot**, never retrained per geometry. This is
 disclosed explicitly here rather than left implicit — it means every
-"IDQN beats green_wave" result in this line is IDQN generalizing against
-an oracle-tuned classical baseline, not two equally-adapted controllers;
-see Section 5.14 for the fuller discussion of which way this cuts.
+"IDQN beats green_wave" result in this line is IDQN generalizing against an
+offset-tuned classical baseline, not two equally-adapted controllers. The
+net direction of that asymmetry is not established in either direction; see
+Section 5.14 for the fuller discussion.
 **Future work**: this one
 result rests on n=3 seeds and one net variant — is the flip a property of
 *this* asymmetry, or of asymmetric spacing generally? (answered by SP9/SP10,
@@ -1235,13 +1244,18 @@ policy checkpoint trained once on the regular (r=0.50) net and evaluated
 **zero-shot** — never retrained or fine-tuned — on every other geometry in
 the table. So the comparison is "oracle-tuned classical control" vs.
 "frozen policy asked to generalize," not two controllers with equal access
-to the test geometry. This cuts in idqn's favour for the flatness result
-(16.56–17.87s across 13 points is more remarkable against an oracle
-baseline than against another frozen one) and means the bounded bands
-should be read as "green_wave, even optimally re-tuned per geometry, loses
-to a policy that was not given the same privilege" — if anything an
-understatement of idqn's robustness, not an overstatement of green_wave's
-weakness. A fully symmetric comparison would need either an idqn retrained
+to the test geometry. **The two halves of that asymmetry pull in opposite
+directions**: the per-geometry offset re-tuning favours `green_wave`, while
+the frozen cycle length disfavours it (a 15 s phase calibrated to the
+regular net's 14.40 s hop, carried onto geometries whose block travel times
+differ by construction — Section 4.7, limitation 2). Which of the two
+dominates at any given ratio is untested, so the band comparison should not
+be characterised as handicapped in either direction, and the band locations
+stay provisional (limitation 3). The flatness result does stand on its own:
+`idqn` has no cycle length and no per-geometry tuning of any kind, so its
+16.56–17.87 s range across 13 points is a property of the frozen policy
+alone, independent of how `green_wave` was configured.
+A fully symmetric comparison would need either an idqn retrained
 per geometry (not attempted — the zero-shot question was deliberately the
 one asked, per SP8's own framing) or a green_wave restricted to one
 fixed offset across all geometries (not attempted either).
@@ -1507,8 +1521,12 @@ Consolidating the project's three fully-closed headline threads:
    policy is flat and geometry-invariant across every span and ratio tested
    (SP8–SP13e). This is a comparison between a per-geometry offset-tuned
    classical plan and a frozen, never-retrained learned policy, not two
-   equally-adapted controllers (Section 5.9/5.14) — a handicap that cuts in
-   IDQN's favour, not against it. **The three parts of this finding rest on
+   equally-adapted controllers (Section 5.9/5.14). The offset re-tuning
+   favours `green_wave`; its frozen cycle length disfavours it; which
+   dominates at any given geometry is untested, so the comparison should not
+   be characterised as handicapped in either direction (Section 4.7,
+   limitations 1–2). IDQN's flatness, by contrast, involves no per-geometry
+   tuning at all and is unaffected either way. **The three parts of this finding rest on
    different evidence and should not be quoted as one number**: (a) *that*
    the reversal happens is confirmed at n=10 seeds on one irregular
    geometry, all ten seeds agreeing, Wilcoxon p=0.0020 with a bootstrap CI
@@ -1648,19 +1666,64 @@ benchmarking reader would each flag first:
 
 ## 8. Individual contributions
 
-*(Placeholder — this section requires input from the group and has not been
-filled in. List each member and what they specifically did: which
-sub-projects they led or contributed to, what code/analysis/writing is
-attributable to them, and any role that doesn't show up as a commit, e.g.
-experiment design, review, or presentation work. `git log --format='%an'
-docs/ analysis/ *.py | sort | uniq -c | sort -rn` is a starting point for
-who touched what, but commit authorship alone is not a substitute for each
-member describing their own actual contribution.)*
+All three members contributed to experiment design, code review, and the
+writing of this report. The division below reflects primary ownership —
+who led a workstream, made its design decisions, and is answerable for its
+results — not exclusive authorship.
 
-- Member 1 — name, contribution
-- Member 2 — name, contribution
-- Member 3 — name, contribution
-- (add or remove rows to match the actual group roster)
+**Sudwipto Kumar Mondal — methodological audit, corridor geometry line,
+and statistical analysis.**
+Led the Stage-1 audit (Section 5.1): identified and corrected all six
+methodological defects, including the hard-wired `min_green` that had
+invalidated the project's original headline result, and built the
+non-learning perfect-information controller (`analysis/actuated.py`,
+`analysis/headroom.py`) that isolated the action space rather than the
+algorithm as the binding constraint. Owned the corridor geometry line
+end to end — SP8's first spacing flip, SP9's n=10 widening, SP10's
+variant generalisation, and the SP13/SP13e 13-point dose-response sweep
+that produced the bounded-band result (Section 5.14) and overturned the
+project's earlier monotonic reading. Ran the `min_green` floor sweep and
+wrote the two-floor resolution in Section 4.7, including the progression-
+bandwidth mechanism and its three disclosed limitations. Produced
+Appendix A (`analysis/headline_stats.py`) and the small-n statistical
+policy the report now applies throughout, replacing the earlier draft's
+untrustworthy n=3 interval estimates with per-seed reporting.
+
+**Swatej Parmar — multi-agent infrastructure, learned controllers, and
+the safety-weight ablation.**
+Built the three-signal corridor environment (SP1) and the multi-agent
+training infrastructure the entire corridor line runs on: the IPPO
+implementation and its per-agent training loop (SP2), the MAPPO
+centralised-critic extension (SP3), and the corridor training entry
+points (`train_corridor.py`, `train_corridor_dqn.py`). Implemented and
+trained the independent DQN controller (SP5) that became the project's
+strongest learned baseline, and ran the IPPO-vs-corrected-bar comparison
+(SP4) that established the corridor's non-learning bar. Owned the
+safety-weight ablation (SP14/SP14b) — the five-point λ sweep, the
+discovery that the project's own default λ=0.5 was never
+efficiency-optimal, and the n=3→n=10 widening that confirmed the knee
+rather than dissolving it. Ran the MAPPO smoke test and its retuning
+round (SP15/SP15b), producing the project's disclosed negative result
+against its own founding coordination thesis.
+
+**Aleana Biju — reward and observation design, traffic modelling, and
+robustness testing.**
+Designed and implemented the safety-aware reward (Section 4.1) — the
+composite braking/exposure penalty, the vulnerability weighting inverted
+against PCU space weighting, and the scaling that makes λ comparable
+across arms — together with the PCU-weighted observation (Section 4.2)
+and the disclosure of its mismatch against IRC-referenced values. Built
+the heterogeneous vehicle population and the sublane configuration
+(Section 3.2) and the programmatic demand generator behind every scenario
+used in the project (Section 3.3). Owned the robustness line: zero-shot
+demand-shift generalisation (SP6), the mid-episode incident study (SP7),
+the magnitude curriculum (SP11), and incident-aware retraining (SP12).
+Ran the post-hoc heterogeneity breakdown (Section 5.19) that established
+IDQN's uneven delay across vehicle types and identified the un-weighted
+efficiency term as its cause — the project's one heterogeneity-specific
+result. Led the literature review (Section 2), including the
+verification of the safety-reward citation flagged as unlocatable in an
+earlier draft.
 
 ---
 
