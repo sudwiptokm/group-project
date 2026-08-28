@@ -34,10 +34,20 @@ bounded bands of the asymmetry ratio rather than a monotonic trend) resting
 on a single-span, n=3 sweep and correspondingly weaker; (3) the project's
 safety-weighted reward's default weight (λ=0.5) was never the
 efficiency-optimal point — λ=0.25 beats it on delay on both geometries
-tested, confirmed at n=10 seeds; (4) a centralised-critic multi-agent method
-(MAPPO), built specifically to test this project's own coordination thesis,
-does not outperform independent learning at this scale, even after one round
-of hyperparameter retuning aimed at its most likely confound.
+tested, confirmed at n=10 seeds, and beats λ=0.0 as well, so the safety
+penalty acts as a regulariser rather than buying safety at an efficiency
+cost; (4) a centralised-critic multi-agent method (MAPPO), built
+specifically to test this project's own coordination thesis, does not
+outperform independent learning at this scale, even after one round of
+hyperparameter retuning aimed at its most likely confound; and (5) the
+learned controller distributes delay **unequally across vehicle types** —
+motorcycles worst (17.41 s), cars best (13.78 s), a 3.6 s spread — where
+both non-learning baselines are close to type-uniform, because the reward's
+efficiency term is un-weighted by vehicle type while only its safety term is
+vulnerability-weighted. Findings (1) and (4) corroborate patterns already
+established in the literature; (2), (3) and (5) are where this project's own
+contribution lies, and (5) is the one result that depends on the traffic mix
+being heterogeneous at all.
 
 Six independent methodological defects in the project's first-stage results
 were found and corrected (Section 5.1) before any of the above could be
@@ -163,18 +173,36 @@ exposure: Kar, Kumar, Samalla, Chunchu & Ravi Shankar (2024) **[19]** and
 Samalla, Kar & Chunchu (2024) **[20]** — cited here as supporting context,
 not as the spec's primary source.
 
+**What the motivating literature does and does not supply.** Samalla &
+Chunchu **[18]** studies exactly the maneuver classes this project's framing
+invokes — following, filtering, overtaking and weaving by powered
+two-wheelers under weak lane discipline — and is therefore a sound
+motivation for *treating motorcycles as a distinct risk category at all*.
+It does not, however, publish any cross-class vulnerability weighting, and
+nothing in it (or in **[19]**/**[20]**) supplies the specific
+`moto = 1.0 / auto = 0.6 / car = 0.3` values this project uses. Those are
+this project's own modelling assumption, adopted as an ordering-preserving
+mirror of the PCU convention, and are presented as such throughout
+(Section 4.1); the cited literature motivates the *direction* of the
+weighting, not its magnitudes.
+
 The observation-side PCU weighting (Section 4.2) sits in a separate,
 independently well-established literature: passenger-car-unit equivalency is
 the classical transportation-engineering device for reducing a heterogeneous
-vehicle stream to one comparable capacity unit, and in the Indian
-mixed-traffic setting this project's framing invokes, Chandra & Sikdar
-(2000), *"Factors affecting PCU in mixed traffic situations on urban roads"*
-**[17]**, is a widely-cited empirical source for exactly this kind of
-motorcycle/auto-rickshaw/car PCU estimation. This project's own numeric PCU
-weights (Section 4.2) are, however, its own chosen approximation in the
-spirit of that literature, not values taken directly from it or from any
-single cited table — see Section 4.2's disclosed mismatch against
-IRC-referenced values.
+vehicle stream to one comparable capacity unit. Two distinct sources are
+relevant and are kept distinct here, because conflating them would
+misattribute numbers. **IRC:106-1990** **[21]**, the Indian Roads Congress
+urban-capacity guideline, tabulates *fixed* PCU values that vary with a
+vehicle class's share of the stream: two-wheelers 0.5 (at ≤5% composition)
+rising to 0.75 (at ≥10%), and auto-rickshaws 1.2 rising to 2.0, against
+car = 1.0. **Chandra & Sikdar (2000)** **[17]** is a different kind of
+source: it proposes a *dynamic* PCU derived from the ratio of vehicle
+projected areas and the ratio of speeds, so it yields no single table of
+constants, and applied studies using that method report markedly lower urban
+values — roughly 0.2–0.31 for two-wheelers and around 1.0 for
+three-wheelers. This project's own weights (Section 4.2) are its own chosen
+constants; Section 4.2 records where they agree and disagree with each of
+these two sources.
 
 **How this project's finding compares.** The literature motivation is about
 *where* two-wheeler risk concentrates (queue-front seepage, intersection
@@ -182,11 +210,19 @@ conflict points); this project's own SP14/SP14b measurement (Section 5.16)
 is about *what a scalar safety penalty on top of a delay-minimising reward
 does to the resulting policy* — a different, complementary question the
 motivating literature does not itself answer, since it is not an RL paper.
-The project's finding — that the reward's efficiency/safety frontier has a
-knee around λ=0.25–0.5, not a smooth trade-off across [0,1] — is this
-project's own original contribution, not a replication or contradiction of
-prior work, because no prior published work in this project's citation trail
-ran that ablation.
+The project's finding is that the reward's efficiency/safety frontier has a
+knee around λ=0.25–0.5 rather than a smooth trade-off across [0,1]. Two
+parts of that should be separated. That *some* intermediate weighting beats
+both extremes is the expected shape for a multi-objective reward and is not
+claimed here as novel: weight-balancing studies are an established genre in
+multi-objective RL traffic-signal control, a literature this report does not
+survey in depth and against which no priority claim is made. The sharper and
+less commonly reported part is that **λ=0.25 beats λ=0.0 on delay** — that
+is, adding a safety penalty makes the policy *more* efficient than
+optimising for efficiency alone, so the penalty is acting as a regulariser
+rather than buying safety at a delay cost. λ=0.0 is dominated outright
+(Section 5.16). That is the specific observation this project claims, and it
+is a measurement its own citation trail contains no prior instance of.
 
 ### 2.3 The RESCO benchmark and the IDQN-over-IPPO result
 
@@ -196,13 +232,21 @@ parameter-shared IPPO — is explicitly modelled on **RESCO** (*Reinforcement
 Learning Benchmarks for Traffic Signal Control*), Ault & Sharon **[11]**, a
 NeurIPS 2021 Datasets and Benchmarks Track paper and open-source benchmark
 suite (github.com/Pi-Star-Lab/RESCO) built on SUMO, spanning networks of 3–21
-signalized intersections drawn from real Cologne, Luxembourg, and Salt Lake
-City traffic data. RESCO's own comparison found independent DQN (IDQN) to be
-its best- and fastest-converging controller — converging in roughly 100
-episodes — while its parameter-shared/centralised PPO variants needed
-roughly 1,400 episodes and failed to converge on 2 of 6 of RESCO's own
-benchmark scenarios, including a corridor-shaped task
-(`docs/superpowers/specs/2026-08-21-sp5-idqn-corridor-design.md:15-20`).
+signalized intersections drawn from real Cologne (TAPAS Cologne) and
+Ingolstadt (InTAS) traffic data. (Salt Lake City scenarios were added to the
+RESCO codebase in a later v2.0 release, not in the 2021 paper this project
+cites.) RESCO's own comparison found independent DQN (IDQN) to be its best
+controller on 5 of its 6 benchmark tasks, while **IPPO** — RESCO's PPO
+entrant, which is *independent*, not parameter-shared or centralised —
+failed to converge on 2 of those 6, including a corridor-shaped task
+(`docs/superpowers/specs/2026-08-21-sp5-idqn-corridor-design.md:15-20`). The
+convergence-speed contrast this project's design spec quotes (roughly 100
+episodes for IDQN against roughly 1,400 for IPPO) comes from RESCO's 4×4
+grid *validation* scenarios, not from those six benchmark tasks; it is cited
+here in that narrower sense. **RESCO 2021 does not include MAPPO at all** —
+its RL controllers are IDQN, IPPO, MPLight, MPLight\*, and FMA2C — so it is
+not a source for anything this report says about centralised critics
+(Section 2.4 covers that literature separately).
 
 **How this project's finding compares.** This project's SP5 (Section 5.6)
 replicated the qualitative direction of RESCO's finding on its own,
@@ -221,6 +265,23 @@ this project's own observation function is already a flat
 phase/density/queue feature vector rather than RESCO's raw per-lane spatial
 encoding — a disclosed, deliberate scope cut, not an oversight
 (`docs/superpowers/specs/2026-08-21-sp5-idqn-corridor-design.md:42-47`).
+
+**Where this project's Finding 1 sits relative to that benchmark.** This
+report's first consolidated result (Section 6, finding 1 — a competently
+timed classical plan beating every RL algorithm tried) should be read as
+**corroboration of an established pattern, not as a new discovery**. RESCO
+**[11]** already reports strong non-learning baselines (fixed-time, greedy,
+max-pressure) as competitive reference points rather than straw men, and
+Noaeen et al.'s **[12]** central complaint about the field is precisely that
+reported RL improvements are frequently not comparable to a properly
+configured classical controller. What this project contributes on that axis
+is not the direction of the result but its *mechanism*: Section 5.1
+identifies the action-space floor (`min_green`), rather than the algorithm
+or the training budget, as the binding constraint, and demonstrates it with
+a non-learning perfect-information controller that fails in exactly the same
+way at the same floor. That diagnostic — separating "RL is the wrong tool"
+from "the environment left no headroom for any controller" — is the part
+worth claiming.
 
 ### 2.4 The MAPPO/CTDE coordination thesis
 
@@ -275,10 +336,12 @@ PettingZoo wrapper (Alegre **[6]**), version 1.4.5
 The two non-learning corridor baselines are, respectively, a hand-implemented
 fixed-offset coordination plan in the classical "green wave" tradition
 (offset-based arterial progression traces to Morgan & Little 1964 **[10]**)
-and **max-pressure** control (Varaiya 2013 **[9]**), a provably
-throughput-maximising decentralised control law widely used as the
-state-of-the-art non-learning reference in the traffic-signal RL literature,
-including in RESCO **[11]** itself.
+and **max-pressure** control (Varaiya 2013 **[9]**), a decentralised control
+law with a throughput-optimality proof in its full form and widely used as
+the state-of-the-art non-learning reference in the traffic-signal RL
+literature, including in RESCO **[11]** itself. This project implements the
+simplified unweighted queue-difference variant, which does not inherit that
+proof — see Section 4.4.
 
 ---
 
@@ -450,6 +513,16 @@ safety_penalty   = Σ_t  (brake_term(t) + exposure_term(t))   over every
   8–9 m/s², Section 3.2); not drawn from a specific cited source — disclosed
   by the project's own spec as a "defensible default"
   (`docs/superpowers/specs/2026-07-17-safety-aware-reward-comparison-design.md:192`).
+  For context on how much that choice matters: the naturalistic-driving and
+  telematics literature on harsh-braking events uses no single standard
+  threshold, with published cut-offs spread across roughly 2–5 m/s²
+  (values near 0.5 g ≈ 4.9 m/s² and near 4.0 m/s² are both common, while
+  some studies use thresholds as low as 2.3–3.0 m/s²). 4.5 m/s² sits at the
+  stricter end of that band and is defensible, but the count of braking
+  events — and hence the magnitude of `brake_term` — is sensitive to where
+  in that band the threshold is placed. **This project never swept
+  `B_THRESH`**, so how much of the λ curve's shape (Section 5.16) depends on
+  this one constant is untested; the sweep is named in Section 7.
 - **`is yellow/clearing`** — a **dynamic**, per-step signal-state flag read
   directly from sumo-rl's `TrafficSignal.is_yellow`, not a constant.
 
@@ -506,19 +579,30 @@ capacity(lane)    = max( lane_length / (car_length + car_min_gap) , 1.0 )
 - **`w_pcu(type)`** — a **fixed lookup table**: `moto = 0.3`, `auto = 0.5`,
   `car = 1.0` (default 1.0 for unrecognised types) (`env_common.py:27-28`).
   These are the project's **own chosen constants**, applied in the spirit of
-  the classical PCU-equivalency concept for heterogeneous traffic (Chandra &
-  Sikdar 2000 **[17]**, Section 2.2), not values taken from that or any other
-  single cited table. An independent check against the Indian Roads Congress
-  PCU convention (IRC:106) — a plausible source given this project's
-  heterogeneous-traffic framing — found IRC-referenced PCU values reported
-  elsewhere in the literature (e.g. motorcycle ≈0.5–0.75, auto-rickshaw
-  ≈1.2–2.0, relative to car = 1.0) do **not** match this project's values;
-  the project's motorcycle and auto-rickshaw weights are markedly lower.
-  This is disclosed here as a genuine gap: the observation weighting is an
-  internally consistent, project-chosen convention inspired by the PCU
-  literature, not a literature-sourced or IRC-standard one, and a reader
-  treating this project's PCU numbers as calibrated against Indian
-  traffic-engineering practice would be mistaken.
+  the classical PCU-equivalency concept for heterogeneous traffic
+  (Section 2.2), not values taken from any single cited table. Checked
+  against the two relevant sources separately, they land differently against
+  each, and the difference is worth stating precisely rather than as one
+  flat mismatch:
+  - Against **Chandra & Sikdar's [17]** dynamic (projected-area × speed-ratio)
+    method, whose applied urban values run ≈0.2–0.31 for two-wheelers and
+    ≈1.0 for three-wheelers: this project's `moto = 0.3` sits **inside** that
+    range, while its `auto = 0.5` is roughly half the method-derived value.
+  - Against **IRC:106-1990 [21]**, whose composition-dependent table gives
+    two-wheelers 0.5–0.75 and auto-rickshaws 1.2–2.0: **both** of this
+    project's weights are lower, the auto-rickshaw weight substantially so.
+
+  The honest summary is therefore narrower than an earlier draft of this
+  report claimed: the motorcycle weight is defensible against one of the two
+  sources, the auto-rickshaw weight is not defensible against either, and
+  neither weight was derived from a source in the first place. The
+  observation weighting remains an internally consistent, project-chosen
+  convention, and a reader treating these numbers as calibrated against
+  Indian traffic-engineering practice would be mistaken. Because
+  `SAFETY_SCALE` was calibrated against these constants and every trained
+  checkpoint in the project ran under them, correcting the values was not
+  available within this project's remaining budget; it is named as future
+  work (Section 7) rather than silently left implicit.
 - The full observation vector per agent is
   `[phase one-hot | min-green-elapsed flag | PCU density per lane | PCU
   queue per lane]` — a fixed-dimension vector (19 dimensions per corridor
@@ -589,10 +673,22 @@ chosen_phase(t)   = argmax_p  pressure(phase p)      (ties → lowest phase id)
   decentralised control law, whose foundational formalisation and
   throughput-optimality proof is Varaiya 2013 **[9]**: at each decision
   point, serve the phase whose incoming queues are most backed up relative
-  to what they discharge into, which provably maximises network throughput
-  under mild conditions without requiring any model of arriving demand. No
-  free parameters beyond the decision interval and `min_green` floor, both
-  already defined above.
+  to what they discharge into. No free parameters beyond the decision
+  interval and `min_green` floor, both already defined above.
+- **A scope caveat on the optimality claim.** Varaiya's result is that
+  max-pressure stabilises any demand within the network's stability region
+  and so maximises throughput *without a model of arriving demand* — but it
+  does require knowledge of **mean turn ratios and saturation rates**, which
+  enter the pressure computation as weights. The rule implemented here is
+  the simplified, unweighted queue-difference variant: it uses neither turn
+  ratios nor saturation rates, and applies no PCU weighting either. It is
+  therefore a standard practical approximation of max-pressure and a fair
+  reactive baseline, but **the throughput-optimality guarantee belongs to
+  the full formulation and is not inherited by this implementation**.
+  Wherever this report refers to `max_pressure` as a state-of-the-art
+  non-learning reference, that is a statement about its standing as a
+  baseline in the traffic-signal RL literature (including RESCO **[11]**),
+  not a claim that this project's version is provably optimal.
 
 ### 4.5 RL hyperparameters and their provenance
 
@@ -1547,14 +1643,38 @@ Consolidating the project's three fully-closed headline threads:
    after HP retuning aimed at the most obvious confound (SP15, SP15b) — a
    real, disclosed negative result against the project's own original
    thesis claim (Section 2.4). n=1 throughout; no statistical test applies.
-6. **Heterogeneity is this project's framing, not (yet) an independent
-   result**: findings 1–5 are all geometry, algorithm, or reward-weight
-   effects that do not depend on the traffic mix being heterogeneous. The
-   one vehicle-type-disaggregated check run for this report (Section 5.19)
-   found IDQN, specifically, imposes uneven delay by vehicle type (worst on
-   motorcycles, best on cars) in a way the other two controllers do not —
-   a real, narrow heterogeneity-specific finding, but not yet the kind of
-   result that would make the mix load-bearing for findings 1–5.
+6. **Vehicle-class inequity under learned control — the one finding that
+   depends on the traffic mix.** Findings 1–5 are geometry, algorithm, or
+   reward-weight effects that would survive a homogeneous car-only stream.
+   This one does not. Disaggregating delay by vehicle type (Section 5.19)
+   shows the two non-learning controllers are close to type-uniform — as
+   expected, since neither conditions on vehicle type — while **IDQN is
+   not**: motorcycles see 17.41 s against cars' 13.78 s, a 3.6 s spread the
+   other two controllers do not exhibit. The mechanism is identified, not
+   merely observed: the reward's efficiency term (`diff_waiting_time`) is
+   raw un-weighted waiting time, identical regardless of which vehicle type
+   is waiting, while only the safety term is vulnerability-weighted and only
+   for braking and exposure events. A policy that learns to deprioritise
+   motorcycles' throughput therefore pays no cost for it in training — even
+   though motorcycles are both the most numerous type in this mix (59–60% of
+   trips) and the type the reward's own weighting treats as most at risk.
+
+   The consequence is that "safety-aware," as this project implements it,
+   means *vulnerability-aware for braking and exposure events*, not
+   *vulnerability-aware for who gets to move* — and that the aggregate
+   delay figures reported throughout Section 5 are trip-count-weighted
+   averages over a policy that treats vehicle classes unequally. This is
+   the project's most distinctive result. Equity in RL traffic-signal
+   control is an active topic, but the fairness literature this project is
+   aware of addresses equity *across intersections* or between vehicles and
+   pedestrians rather than **across heterogeneous vehicle classes in
+   weak-lane-discipline traffic**, which is the axis measured here. It rests
+   on one geometry, one λ, one demand scenario and n=3–5 seeds (Section 7),
+   so it is a well-mechanised single measurement rather than a swept result
+   — but it is the finding that makes the project's heterogeneous framing
+   load-bearing rather than decorative, and the one whose follow-up
+   (a type-weighted efficiency term, then a re-run λ ablation) is the
+   highest-value next experiment the project has identified.
 
 ---
 
@@ -1581,8 +1701,9 @@ benchmarking reader would each flag first:
   does not substitute for evidence that the findings survive contact with
   a standard, independently-built benchmark network. RESCO **[11]**
   (Section 2.3), already this project's own methodological reference for
-  the IDQN choice, ships real Cologne/Luxembourg/Salt-Lake-City-derived
-  networks precisely for this purpose. Reproducing even one of this
+  the IDQN choice, ships real Cologne- and Ingolstadt-derived networks
+  precisely for this purpose (with further city scenarios added in later
+  releases of its codebase). Reproducing even one of this
   project's headline effects (most feasibly the λ ablation, Section 5.16,
   since it does not depend on this project's own custom geometry-sweep
   machinery) on one RESCO network would convert "we built a toy corridor
@@ -1653,9 +1774,26 @@ benchmarking reader would each flag first:
   crash data, an IRC standard, or a cited weighting scheme. A follow-up
   that calibrates these against real crash-risk or PCU-survey data (in the
   spirit of the Samalla & Chunchu-style literature this project's reward is
-  motivated by, and the Chandra & Sikdar **[17]** PCU literature, Section
-  2.2) would materially strengthen the "safety-aware" framing beyond
-  internal consistency.
+  motivated by, and the Chandra & Sikdar **[17]** / IRC:106 **[21]** PCU
+  literature, Section 2.2) would materially strengthen the "safety-aware"
+  framing beyond internal consistency. Two specific sub-items, both
+  identified while auditing this report's own citations and neither
+  fixable within this project's remaining budget because `SAFETY_SCALE` and
+  every trained checkpoint depend on the current values:
+  - **`B_THRESH` was never swept.** Published harsh-braking thresholds span
+    roughly 2–5 m/s² (Section 4.1) and event counts are sensitive to where
+    in that band the cut-off sits, so how much of the λ curve's shape
+    (Section 5.16) is an artifact of 4.5 m/s² specifically is untested. A
+    three-point sweep (e.g. 3.0 / 4.5 / 4.9 m/s²) at the two λ values SP14b
+    already confirmed at n=10 is the cheapest available check.
+  - **The `auto` PCU weight (0.5) is the least defensible constant in the
+    project.** Section 4.2 records that `moto = 0.3` sits inside the range
+    that Chandra & Sikdar's **[17]** own method yields for two-wheelers,
+    while `auto = 0.5` is roughly half its method-derived value and well
+    below IRC:106's **[21]** 1.2–2.0. Re-running the observation weighting
+    with a literature-consistent auto-rickshaw weight — and recalibrating
+    `SAFETY_SCALE` against it — is a full retrain, not an evaluation-time
+    change.
 - **Every demand scenario in this project is synthetic** (Section 3.3) —
   no real traffic count, turning-movement survey, or GPS trace was used to
   fit any arrival rate. Validating the project's qualitative findings
@@ -1880,6 +2018,11 @@ SP13/SP13e rows above.
     powered two-wheelers in urban mixed traffic environments: a conflict
     threshold perspective.* International Journal of Injury Control and
     Safety Promotion, 31(3), 477–486. doi:10.1080/17457300.2024.2344161.
+21. Indian Roads Congress (1990). *IRC:106-1990 — Guidelines for Capacity of
+    Urban Roads in Plain Areas.* New Delhi: Indian Roads Congress. (Source
+    of the composition-dependent PCU values quoted in Sections 2.2 and 4.2:
+    two-wheelers 0.5→0.75 and auto-rickshaws 1.2→2.0 as their share of the
+    stream rises from ≤5% to ≥10%, against car = 1.0.)
 
 ---
 
