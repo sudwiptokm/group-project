@@ -39,11 +39,11 @@ STATIC_PLAN_MIN_GREEN = 10
 
 
 def run_baseline(scenario: str, seed: int, green: int = DEFAULT_GREEN,
-                 teleport: int = None) -> str:
+                 teleport: int = None, gui: bool = False) -> str:
     os.makedirs("logs", exist_ok=True)
     csv = f"logs/eval_fixedtime_{scenario}_seed{seed}_g{green}"
     # lam=0 -> reward term irrelevant here; we never learn, just cycle phases
-    env = make_env(seed=seed, scenario=scenario, lam=0.0, gui=False, out_csv=csv,
+    env = make_env(seed=seed, scenario=scenario, lam=0.0, gui=gui, out_csv=csv,
                    teleport=teleport, tripinfo=True,
                    # This controller sets its own green, so the action-space
                    # floor must not clamp it: make_env now defaults to 60, which
@@ -55,14 +55,23 @@ def run_baseline(scenario: str, seed: int, green: int = DEFAULT_GREEN,
     # decision steps to hold one green; the env clamps to min_green/max_green
     hold = max(1, green // env.delta_time)
     obs, _ = env.reset()
+    hud = None
+    if gui:
+        from demo_hud import Hud
+        hud = Hud(env, f"FIXED-TIME BASELINE  ({green} s green, no learning)",
+                  f"{scenario} demand, seed {seed}")
     n_actions = env.action_space.n
     action, done, i = 0, False, 0
     while not done:
-        obs, _, terminated, truncated, _ = env.step(action)
+        obs, _, terminated, truncated, info = env.step(action)
         i += 1
         if i % hold == 0:
             action = (action + 1) % n_actions   # round-robin greens = fixed-time
         done = terminated or truncated
+        if hud:
+            hud.update(info, done)
+    if hud:
+        hud.hold()
     # sumo-rl only flushes the CSV on the NEXT reset(); a single eval episode
     # never gets one, so save it explicitly.
     # Mirrors train.py evaluate() exactly: env.save_csv(env.out_csv_name, env.episode)
@@ -84,5 +93,6 @@ if __name__ == "__main__":
                         "of the peak static sweep)")
     p.add_argument("--teleport", type=int, default=None,
                    help="SUMO --time-to-teleport; default from TIME_TO_TELEPORT env var")
+    p.add_argument("--gui", action="store_true", help="show sumo-gui")
     args = p.parse_args()
-    run_baseline(args.scenario, args.seed, args.green, args.teleport)
+    run_baseline(args.scenario, args.seed, args.green, args.teleport, args.gui)

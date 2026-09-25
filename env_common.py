@@ -529,7 +529,9 @@ def make_corridor_env(seed: int, scenario: str = "corridor_offpeak",
             raise ValueError("tripinfo=True needs out_csv to derive the filename")
         extra += f" --tripinfo-output {tripinfo_path(out_csv)}"
     if gui:
-        extra += " --gui-settings-file gui-settings.xml --start --quit-on-end"
+        # sumo-rl already appends --start --quit-on-end under use_gui; repeating them is a parse error
+        extra += " --gui-settings-file gui-settings.xml"
+        extra += " " + os.environ.get("SUMO_GUI_WINDOW", "")
     return SafetyLoggingEnv(
         net_file=net_file,
         route_file=SCENARIO_ROUTES[scenario],
@@ -606,7 +608,10 @@ def make_env(seed: int, scenario: str = "base", lam: float = 0.0,
             raise ValueError("tripinfo=True needs out_csv to derive the filename")
         extra += f" --tripinfo-output {tripinfo_path(out_csv)}"
     if gui:
-        extra += " --gui-settings-file gui-settings.xml --start --quit-on-end"
+        # sumo-rl already appends --start --quit-on-end under use_gui; repeating them is a parse error
+        extra += " --gui-settings-file gui-settings.xml"
+        # e.g. SUMO_GUI_WINDOW="--window-size 900,700 --window-pos 0,0" to tile two demo windows
+        extra += " " + os.environ.get("SUMO_GUI_WINDOW", "")
     return SafetyLoggingEnv(
         net_file="intersection.net.xml",
         route_file=SCENARIO_ROUTES[scenario],

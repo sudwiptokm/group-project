@@ -183,13 +183,22 @@ def evaluate(algo: str, model_file: str, seed: int, gui: bool,
                    tripinfo=True, min_green=min_green)
     model = ALGOS[algo]["cls"].load(model_file)
     obs, _ = env.reset()
+    hud = None
+    if gui:
+        from demo_hud import Hud
+        hud = Hud(env, f"RL CONTROLLER  ({algo.upper()}, learned policy)",
+                  f"{scenario} demand, seed {seed}")
     done = False
     total_r = 0.0
     while not done:
         action, _ = model.predict(obs, deterministic=True)
-        obs, reward, terminated, truncated, _ = env.step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
         total_r += reward
         done = terminated or truncated
+        if hud:
+            hud.update(info, done)
+    if hud:
+        hud.hold()
     # sumo-rl only flushes the CSV on the NEXT reset(); a single eval episode
     # never gets one, so save it explicitly before closing the connection.
     env.save_csv(env.out_csv_name, env.episode)

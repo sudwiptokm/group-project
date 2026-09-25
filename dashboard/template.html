@@ -1,0 +1,565 @@
+<title>Group 7 Signal Control Results</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f3f4f6; --surface:#ffffff; --sunk:#eceef2;
+  --ink:#14171c; --ink-2:#4a5160; --muted:#737a88; --rule:#dde0e6; --grid:#e8eaee;
+  --accent:#a86300; --accent-soft:#fbefdc;
+  --win:#fdf3e2;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4;
+  --s7:#4a3aa7; --s8:#e34948; --neutral:#9aa0ab;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#101216; --surface:#1a1d22; --sunk:#15181c;
+    --ink:#eef0f3; --ink-2:#b4bac5; --muted:#8a919e; --rule:#2c3139; --grid:#252930;
+    --accent:#f0a43a; --accent-soft:#33260f; --win:#2a2213;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+    --s7:#9085e9; --s8:#e66767; --neutral:#6b717c;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#101216; --surface:#1a1d22; --sunk:#15181c;
+  --ink:#eef0f3; --ink-2:#b4bac5; --muted:#8a919e; --rule:#2c3139; --grid:#252930;
+  --accent:#f0a43a; --accent-soft:#33260f; --win:#2a2213;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+  --s7:#9085e9; --s8:#e66767; --neutral:#6b717c;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:20px;padding-block:0 64px}
+header.top{padding-block:40px 20px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(28px,4vw,40px);line-height:1.1;margin:8px 0 10px;text-wrap:balance;letter-spacing:-.01em}
+h2{font-family:var(--display);font-weight:600;font-size:22px;margin:0;text-wrap:balance}
+h3{font-family:var(--display);font-weight:600;font-size:16px;margin:0;text-wrap:balance}
+p{margin:0}
+.lede{color:var(--ink-2);max-width:72ch}
+nav.jump{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--rule);margin-bottom:28px}
+nav.jump .in{max-width:1180px;margin:0 auto;padding-inline:20px;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+nav.jump a{flex:none;padding:10px 10px;color:var(--ink-2);text-decoration:none;font-size:13px;font-weight:500;border-bottom:2px solid transparent}
+nav.jump a:hover{color:var(--ink);border-bottom-color:var(--accent)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+
+.findings{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:40px}
+.finding{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.finding .tag{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.04em}
+.finding .big{font-family:var(--mono);font-size:22px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.finding .big small{font-size:13px;color:var(--muted);font-weight:400}
+.finding p{font-size:13px;color:var(--ink-2)}
+.pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:1px 7px;border-radius:99px;background:var(--accent-soft);color:var(--accent);width:max-content}
+
+section.block{margin-top:44px;scroll-margin-top:56px}
+.block-head{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--rule)}
+.block-head p{color:var(--ink-2);max-width:78ch;font-size:14px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,470px),1fr));gap:16px}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:16px;min-width:0;display:flex;flex-direction:column;gap:10px}
+.panel-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.panel-top .sub{font-size:13px;color:var(--muted);margin-top:2px}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:6px;overflow:hidden;flex:none}
+.seg button{font:500 12px var(--body);background:transparent;color:var(--ink-2);border:0;padding:5px 10px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--rule)}
+.seg button[aria-pressed="true"]{background:var(--sunk);color:var(--ink)}
+.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink-2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.legend i.line{height:3px;border-radius:2px}
+.legend i.dash{height:0;border-top:3px dashed;border-radius:0;background:none!important}
+.note{font-size:12.5px;color:var(--muted);max-width:80ch}
+.note b{color:var(--ink-2);font-weight:600}
+.chart{width:100%;position:relative}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart text{font-family:var(--mono);font-size:11px;fill:var(--muted)}
+.chart .val{fill:var(--ink-2)}
+.chart .lab{fill:var(--ink-2);font-family:var(--body);font-size:12px}
+.chart .axis-title{fill:var(--muted);font-family:var(--body);font-size:11.5px}
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--grid);white-space:nowrap}
+th{font-weight:600;color:var(--ink-2);background:var(--sunk);font-size:12px}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:0}
+td.wrap{white-space:normal;min-width:260px}
+.sig{color:var(--accent);font-weight:500}
+#tip{position:fixed;pointer-events:none;z-index:20;background:var(--ink);color:var(--bg);font-size:12px;padding:8px 10px;border-radius:6px;min-width:150px;max-width:260px;box-shadow:0 4px 18px rgba(0,0,0,.18)}
+#tip .t{font-weight:600;margin-bottom:4px}
+#tip .r{display:flex;justify-content:space-between;gap:14px;align-items:center}
+#tip .r span:first-child{display:inline-flex;align-items:center;gap:6px}
+#tip i{width:8px;height:8px;border-radius:2px;display:inline-block}
+#tip .m{font-family:var(--mono);font-variant-numeric:tabular-nums}
+figure{margin:0;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
+figure img{border-radius:4px;background:#fff}
+figcaption{font-size:13px;color:var(--ink-2)}
+figcaption code{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+code{font-family:var(--mono);font-size:.92em}
+@media (max-width:560px){.wrap{padding-inline:16px}nav.jump .in{padding-inline:16px}}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="eyebrow">Group 7 · SUMO · heterogeneous traffic · SP1–SP15b</div>
+  <h1>Signal control results: RL vs classical controllers</h1>
+  <p class="lede">Every comparison from the project in one place: isolated intersection, 3-signal corridor, geometry sweeps, the safety weight λ, MAPPO vs IPPO, and per-vehicle-type delay. Delay is <b>seconds of time loss per completed trip</b> (lower is better) unless marked. Error bars and bands show ±1 SD across seeds. Every chart has a table view.</p>
+</header>
+</div>
+<nav class="jump" aria-label="Sections"><div class="in">
+  <a href="#headline">Headline</a><a href="#corridor">Corridor</a><a href="#geometry">Geometry</a><a href="#lambda">Safety λ</a><a href="#marl">MAPPO</a><a href="#equity">Vehicle types</a><a href="#incident">Incident</a><a href="#isolated">Isolated intersection</a><a href="#stats">Paired stats</a><a href="#table">Comparison table</a><a href="#figures">Figures</a>
+</div></nav>
+<div class="wrap">
+
+<section id="headline" class="block" style="margin-top:0">
+  <div class="findings" id="findings"></div>
+</section>
+
+<section id="corridor" class="block">
+  <div class="block-head"><h2>Corridor: who wins depends on the geometry</h2>
+  <p>On evenly spaced signals, the fixed offset plan (green wave) beats every learned and reactive controller. On irregular spacing it loses to independent DQN. Classical controllers and IDQN use n=10 seeds on <code>regular</code>/<code>irregular</code>. Variants 2 and 3 use n=5 for classical controllers and n=3 for IDQN.</p></div>
+  <div class="grid2">
+    <div class="panel" id="p-nets"></div>
+    <div class="panel" id="p-peak"></div>
+    <div class="panel" id="p-mingreen"></div>
+  </div>
+</section>
+
+<section id="geometry" class="block">
+  <div class="block-head"><h2>Geometry dose-response</h2>
+  <p>r = length of the first block ÷ total span, with the span held fixed. Shaded bands mark ratios where IDQN has lower delay than the green wave. The reversal happens in two bounded bands, not as a monotonic trend. Green wave and max-pressure use n=5, IDQN n=3 (zero-shot, no retraining).</p></div>
+  <div class="panel" id="p-geo"></div>
+</section>
+
+<section id="lambda" class="block">
+  <div class="block-head"><h2>Safety weight λ: a regulariser, not a trade-off</h2>
+  <p>IDQN retrained at each λ (n=3). Delay bottoms out at λ=0.25, below both λ=0 and the project default λ=0.5, while the safety penalty per trip keeps falling as λ grows. The dashed line is the irregular geometry.</p></div>
+  <div class="grid2">
+    <div class="panel" id="p-lamd"></div>
+    <div class="panel" id="p-lams"></div>
+  </div>
+</section>
+
+<section id="marl" class="block">
+  <div class="block-head"><h2>Centralised critic (MAPPO) vs independent (IPPO)</h2>
+  <p>Single-seed smoke runs. MAPPO does not beat IPPO on either geometry, including after one round of retuning (lower learning rate, batch 64, 512-unit critic).</p></div>
+  <div class="panel" id="p-mappo"></div>
+</section>
+
+<section id="equity" class="block">
+  <div class="block-head"><h2>Delay by vehicle type</h2>
+  <p>The learned controller spreads delay unevenly: motorcycles fare worst and cars best. Both non-learning baselines stay close to type-uniform. The efficiency term of the reward is not weighted by vehicle type; only the safety term is.</p></div>
+  <div class="panel" id="p-het"></div>
+</section>
+
+<section id="incident" class="block">
+  <div class="block-head"><h2>Lane-blocking incident</h2>
+  <p>Corridor peak with and without an incident (n=3, seeds 42–44). Delay is measured inside the incident window, where the effect is concentrated.</p></div>
+  <div class="grid2">
+    <div class="panel" id="p-inc"></div>
+    <div class="panel" id="p-inc10"></div>
+  </div>
+</section>
+
+<section id="isolated" class="block">
+  <div class="block-head"><h2>Isolated intersection</h2>
+  <p>Stage 1: four single-agent algorithms vs a fixed-time plan (λ=0.5). A well-timed static plan beats every RL agent. The cause is structural: with too short a minimum green, amber phases eat the capacity. The timing sweeps below show that.</p></div>
+  <div class="grid2">
+    <div class="panel" id="p-stage1"></div>
+    <div class="panel" id="p-static"></div>
+  </div>
+</section>
+
+<section id="stats" class="block">
+  <div class="block-head"><h2>Paired statistics</h2>
+  <p>Paired differences across matched seeds, from <code>analysis/headline_stats.csv</code>. The p-values come from exact sign-flip tests. With n=3, the smallest possible p is 0.25, so those rows are descriptive only.</p></div>
+  <div class="tablewrap" id="t-stats"></div>
+</section>
+
+<section id="table" class="block">
+  <div class="block-head"><h2>Stage 2 comparison table</h2>
+  <p>Rows from <code>logs/comparison.csv</code>, the output of <code>python compare.py</code>. Lower is better for time loss, waiting and safety; higher is better for speed.</p></div>
+  <div class="tablewrap" id="t-cmp"></div>
+</section>
+
+<section id="figures" class="block">
+  <div class="block-head"><h2>Saved figures</h2>
+  <p>PNG figures already in the repo, embedded as-is.</p></div>
+  <div class="grid2" id="figs"></div>
+</section>
+</div>
+<div id="tip" hidden></div>
+
+<script>
+const D = /*__DATA__*/null;
+const NS = "http://www.w3.org/2000/svg";
+const CTRL = {
+  green_wave:{label:"Green wave", c:"--s1"},
+  idqn:{label:"IDQN", c:"--s2"},
+  max_pressure:{label:"Max-pressure", c:"--s3"},
+  ippo:{label:"IPPO", c:"--s4"},
+  mappo:{label:"MAPPO", c:"--s5"},
+};
+const GEOM = {regular:{label:"Regular", c:"--s7", dash:false}, irregular:{label:"Irregular", c:"--s8", dash:true}};
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const f1 = v => (v==null||isNaN(v)) ? "–" : Number(v).toFixed(1);
+const f2 = v => (v==null||isNaN(v)) ? "–" : Number(v).toFixed(2);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function el(tag, attrs={}, parent){
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function niceMax(v){
+  const p = Math.pow(10, Math.floor(Math.log10(v))); const n = v/p;
+  const s = n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10; return s*p;
+}
+function ticks(max, count=5){
+  const step = niceMax(max/count); const out=[];
+  for (let t=0; t<=max+1e-9; t+=step) out.push(+t.toFixed(6));
+  return out;
+}
+
+/* tooltip */
+const tip = document.getElementById("tip");
+function showTip(ev, title, rows){
+  tip.innerHTML = `<div class="t">${esc(title)}</div>` + rows.map(r =>
+    `<div class="r"><span>${r.c?`<i style="background:${r.c}"></i>`:""}${esc(r.k)}</span><span class="m">${esc(r.v)}</span></div>`).join("");
+  tip.hidden = false;
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if (x + w > innerWidth - 8) x = ev.clientX - w - 14;
+  if (y + h > innerHeight - 8) y = ev.clientY - h - 14;
+  tip.style.left = Math.max(8,x) + "px"; tip.style.top = Math.max(8,y) + "px";
+}
+const hideTip = () => { tip.hidden = true; };
+
+/* panel scaffold with chart/table toggle and optional selector */
+function panel(id, {title, sub, note, legend, selector, draw, table}){
+  const host = document.getElementById(id);
+  let sel = selector ? selector.value : null;
+  let view = "chart";
+  host.innerHTML = `
+    <div class="panel-top"><div><h3>${title}</h3>${sub?`<div class="sub">${sub}</div>`:""}</div>
+      <div class="controls">${selector?`<div class="seg" data-role="sel" role="group" aria-label="${esc(selector.label)}">${selector.options.map(o=>`<button type="button" data-v="${o.v}" aria-pressed="${o.v===sel}">${esc(o.l)}</button>`).join("")}</div>`:""}
+      <div class="seg" data-role="view" role="group" aria-label="View"><button type="button" data-v="chart" aria-pressed="true">Chart</button><button type="button" data-v="table" aria-pressed="false">Table</button></div></div>
+    </div>
+    ${legend?`<div class="legend">${legend.map(l=>`<span><i class="${l.dash?'line dash':l.line?'line':''}" style="${l.dash?`border-color:var(${l.c})`:`background:var(${l.c})`}"></i>${esc(l.label)}</span>`).join("")}</div>`:""}
+    <div class="chart"></div><div class="tablewrap" hidden></div>
+    ${note?`<p class="note">${note}</p>`:""}`;
+  const chart = host.querySelector(".chart"), tw = host.querySelector(".tablewrap");
+  const render = () => {
+    chart.hidden = view!=="chart"; tw.hidden = view!=="table";
+    if (view==="chart"){ chart.innerHTML=""; draw(chart, sel); }
+    else { const t = table(sel); tw.innerHTML = tableHTML(t.cols, t.rows); }
+  };
+  host.querySelectorAll('[data-role="view"] button').forEach(b => b.onclick = () => {
+    view = b.dataset.v; host.querySelectorAll('[data-role="view"] button').forEach(x=>x.setAttribute("aria-pressed", x===b)); render();
+  });
+  host.querySelectorAll('[data-role="sel"] button').forEach(b => b.onclick = () => {
+    sel = b.dataset.v; host.querySelectorAll('[data-role="sel"] button').forEach(x=>x.setAttribute("aria-pressed", x===b)); render();
+  });
+  render();
+  let lw = chart.clientWidth;
+  new ResizeObserver(() => { if (view==="chart" && Math.abs(chart.clientWidth-lw)>4){ lw=chart.clientWidth; render(); } }).observe(host);
+  renderers.push(render);
+}
+const renderers = [];
+new MutationObserver(() => renderers.forEach(r=>r())).observe(document.documentElement, {attributes:true, attributeFilter:["data-theme"]});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => renderers.forEach(r=>r()));
+
+function tableHTML(cols, rows){
+  return `<table><thead><tr>${cols.map(c=>`<th class="${c.n?'n':''}">${esc(c.l)}</th>`).join("")}</tr></thead><tbody>${
+    rows.map(r=>`<tr>${r.map((v,i)=>`<td class="${cols[i].n?'n':''}${cols[i].wrap?' wrap':''}">${v}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+const STAT_COLS = [{l:"Mean"},{l:"SD",n:1},{l:"n",n:1}];
+
+/* grouped bar chart */
+function barChart(host, {groups, yTitle, height=260}){
+  const W = Math.max(300, host.clientWidth), H = height;
+  const m = {l:44, r:8, t:22, b:34};
+  const pw = W-m.l-m.r, ph = H-m.t-m.b;
+  const vmax = Math.max(...groups.flatMap(g=>g.bars.map(b=>b.mean+(b.sd||0))));
+  const ymax = niceMax(vmax*1.1);
+  const y = v => m.t + ph - v/ymax*ph;
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, role:"img", "aria-label":yTitle}, host);
+  ticks(ymax).forEach(t => {
+    el("line", {x1:m.l, x2:W-m.r, y1:y(t), y2:y(t), stroke:css("--grid"), "stroke-width":1}, svg);
+    el("text", {x:m.l-6, y:y(t)+4, "text-anchor":"end"}, svg).textContent = t;
+  });
+  const at = el("text", {x:0, y:10, class:"axis-title"}, svg); at.textContent = yTitle;
+  const gw = pw/groups.length;
+  groups.forEach((g,gi) => {
+    const nb = g.bars.length;
+    const bw = Math.min(40, (gw*0.78 - (nb-1)*2)/nb);
+    const total = nb*bw + (nb-1)*2;
+    const x0 = m.l + gi*gw + (gw-total)/2;
+    g.bars.forEach((b,bi) => {
+      const x = x0 + bi*(bw+2), top = y(b.mean), base = y(0), r = Math.min(4, bw/2, base-top);
+      const col = b.color.startsWith("--") ? css(b.color) : b.color;
+      el("path", {d:`M${x},${base}V${top+r}Q${x},${top} ${x+r},${top}H${x+bw-r}Q${x+bw},${top} ${x+bw},${top+r}V${base}Z`, fill:col, "fill-opacity":b.op??1}, svg);
+      if (b.sd){
+        const cx = x+bw/2;
+        el("line", {x1:cx, x2:cx, y1:y(b.mean+b.sd), y2:y(Math.max(0,b.mean-b.sd)), stroke:css("--ink-2"), "stroke-width":1.25}, svg);
+        el("line", {x1:cx-3, x2:cx+3, y1:y(b.mean+b.sd), y2:y(b.mean+b.sd), stroke:css("--ink-2"), "stroke-width":1.25}, svg);
+      }
+      if (bw >= 18){
+        const tv = el("text", {x:x+bw/2, y:y(b.mean+(b.sd||0))-5, "text-anchor":"middle", class:"val"}, svg);
+        tv.textContent = f1(b.mean);
+      }
+      const hit = el("rect", {x:x-1, y:m.t, width:bw+2, height:ph, fill:"transparent"}, svg);
+      hit.addEventListener("pointermove", ev => showTip(ev, `${g.label} · ${b.label}`, [
+        {k:"Mean", v:f2(b.mean), c:col}, ...(b.sd!=null?[{k:"SD", v:f2(b.sd)}]:[]), ...(b.n?[{k:"Seeds", v:b.n}]:[])]));
+      hit.addEventListener("pointerleave", hideTip);
+    });
+    const gl = el("text", {x:m.l+gi*gw+gw/2, y:H-m.b+18, "text-anchor":"middle", class:"lab"}, svg);
+    gl.textContent = g.label;
+  });
+  el("line", {x1:m.l, x2:W-m.r, y1:y(0), y2:y(0), stroke:css("--muted"), "stroke-width":1}, svg);
+}
+
+/* multi-series line chart with crosshair */
+function lineChart(host, {series, xTitle, yTitle, xFmt=v=>v, shade=[], shadeLabel, height=280, band=true, xTicks}){
+  const W = Math.max(300, host.clientWidth), H = height;
+  const narrow = W < 480;
+  const m = {l:44, r:narrow?12:96, t:22, b:40};
+  const pw = W-m.l-m.r, ph = H-m.t-m.b;
+  const xs = [...new Set(series.flatMap(s=>s.pts.map(p=>p.x)))].sort((a,b)=>a-b);
+  const xmin = xs[0], xmax = xs[xs.length-1];
+  const x = v => m.l + (v-xmin)/(xmax-xmin)*pw;
+  const ymax = niceMax(Math.max(...series.flatMap(s=>s.pts.map(p=>p.y+(band?p.sd||0:0))))*1.08);
+  const y = v => m.t + ph - v/ymax*ph;
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, role:"img", "aria-label":yTitle}, host);
+  shade.forEach(s => el("rect", {x:x(s[0]), y:m.t, width:Math.max(1,x(s[1])-x(s[0])), height:ph, fill:css("--win")}, svg));
+  if (shade.length && shadeLabel){
+    const t = el("text", {x:x(shade[0][0])+4, y:m.t+12, fill:css("--accent")}, svg); t.textContent = shadeLabel;
+  }
+  ticks(ymax).forEach(t => {
+    el("line", {x1:m.l, x2:m.l+pw, y1:y(t), y2:y(t), stroke:css("--grid")}, svg);
+    el("text", {x:m.l-6, y:y(t)+4, "text-anchor":"end"}, svg).textContent = t;
+  });
+  const xt = xTicks || xs;
+  let lastX = -99;
+  xt.forEach(v => { const px = x(v); if (px-lastX < 30) return; lastX = px;
+    el("text", {x:px, y:m.t+ph+16, "text-anchor":"middle"}, svg).textContent = xFmt(v); });
+  el("text", {x:m.l+pw/2, y:H-4, "text-anchor":"middle", class:"axis-title"}, svg).textContent = xTitle;
+  el("text", {x:0, y:10, class:"axis-title"}, svg).textContent = yTitle;
+  el("line", {x1:m.l, x2:m.l+pw, y1:y(0), y2:y(0), stroke:css("--muted")}, svg);
+  const ends = [];
+  series.forEach(s => {
+    const col = css(s.c);
+    const pts = s.pts.slice().sort((a,b)=>a.x-b.x);
+    if (band && pts.some(p=>p.sd)){
+      const up = pts.map(p=>`${x(p.x)},${y(p.y+(p.sd||0))}`), dn = pts.slice().reverse().map(p=>`${x(p.x)},${y(Math.max(0,p.y-(p.sd||0)))}`);
+      el("polygon", {points:up.concat(dn).join(" "), fill:col, "fill-opacity":.12}, svg);
+    }
+    el("polyline", {points:pts.map(p=>`${x(p.x)},${y(p.y)}`).join(" "), fill:"none", stroke:col, "stroke-width":2, "stroke-linejoin":"round", "stroke-dasharray":s.dash?"6 4":"none"}, svg);
+    pts.forEach(p => el("circle", {cx:x(p.x), cy:y(p.y), r:2.5, fill:col}, svg));
+    const lp = pts[pts.length-1];
+    ends.push({y:y(lp.y), label:s.label, col});
+  });
+  if (!narrow){
+    ends.sort((a,b)=>a.y-b.y);
+    for (let i=1;i<ends.length;i++) if (ends[i].y-ends[i-1].y<14) ends[i].y = ends[i-1].y+14;
+    ends.forEach(e => { const t = el("text", {x:m.l+pw+8, y:e.y+4, class:"lab"}, svg); t.textContent = e.label; });
+  }
+  const cross = el("line", {y1:m.t, y2:m.t+ph, stroke:css("--muted"), "stroke-width":1, visibility:"hidden"}, svg);
+  const dots = series.map(s => el("circle", {r:5, fill:css(s.c), stroke:css("--surface"), "stroke-width":2, visibility:"hidden"}, svg));
+  const hit = el("rect", {x:m.l, y:m.t, width:pw, height:ph, fill:"transparent"}, svg);
+  hit.addEventListener("pointermove", ev => {
+    const r = svg.getBoundingClientRect(); const mx = (ev.clientX-r.left)*W/r.width;
+    const xv = xs.reduce((a,b)=>Math.abs(x(b)-mx)<Math.abs(x(a)-mx)?b:a);
+    cross.setAttribute("x1", x(xv)); cross.setAttribute("x2", x(xv)); cross.setAttribute("visibility","visible");
+    const rows = [];
+    series.forEach((s,i) => { const p = s.pts.find(q=>q.x===xv);
+      if (p){ dots[i].setAttribute("cx", x(xv)); dots[i].setAttribute("cy", y(p.y)); dots[i].setAttribute("visibility","visible");
+        rows.push({k:s.label, v:`${f2(p.y)}${p.sd?` ± ${f2(p.sd)}`:""}`, c:css(s.c), y:p.y}); }
+      else dots[i].setAttribute("visibility","hidden"); });
+    rows.sort((a,b)=>a.y-b.y);
+    showTip(ev, `${xTitle.split(" (")[0]} = ${xFmt(xv)}`, rows);
+  });
+  hit.addEventListener("pointerleave", () => { hideTip(); cross.setAttribute("visibility","hidden"); dots.forEach(d=>d.setAttribute("visibility","hidden")); });
+}
+
+/* ---------- headline ---------- */
+(function(){
+  const nets = (net, c) => D.nets.find(r=>r.net===net && r.controller===c);
+  const s1 = D.stage1.filter(r=>r.scenario==="peak");
+  const ft = s1.find(r=>r.algo==="fixedtime"), rl = s1.filter(r=>r.algo!=="fixedtime").sort((a,b)=>a.mean-b.mean)[0];
+  const st = k => D.stats.find(r=>r.label.startsWith(k));
+  const l_reg = st("SP14b regular"), l_irr = st("SP14b irregular"), irr = st("SP9 irregular");
+  const mr = D.mappo.find(r=>r.variant==="mappo"&&r.geometry==="regular"), ir = D.mappo.find(r=>r.variant==="ippo"&&r.geometry==="regular");
+  const het = D.het.filter(r=>r.controller==="idqn");
+  const hmax = het.reduce((a,b)=>a.mean>b.mean?a:b), hmin = het.reduce((a,b)=>a.mean<b.mean?a:b);
+  const V = {moto:"Motorcycles", car:"Cars", auto:"Auto-rickshaws"};
+  const cards = [
+    {tag:"1 · Isolated intersection", big:`${f2(ft.mean)} <small>vs ${f2(rl.mean)} s</small>`, p:`At peak, the fixed-time plan's mean waiting time beats the best RL agent (${rl.algo.toUpperCase()}). The cause is structural.`, pill:"corroborates literature"},
+    {tag:"2 · Corridor geometry", big:`${f1(nets("regular","green_wave").mean)} → ${f1(nets("irregular","green_wave").mean)} <small>s</small>`, p:`Green wave wins on regular spacing but loses to IDQN on irregular spacing (IDQN ${f1(nets("irregular","idqn").mean)} s, paired Δ ${f2(irr.mean)} s, p=${irr.p.toFixed(3)}, n=10).`, pill:"project contribution"},
+    {tag:"3 · Safety weight", big:`−${f2(l_reg.mean)} <small>s at λ=0.25</small>`, p:`λ=0.25 beats the default λ=0.5 on both geometries (irregular −${f2(l_irr.mean)} s; n=10, p≤${Math.max(l_reg.p,l_irr.p).toFixed(3)}).`, pill:"project contribution"},
+    {tag:"4 · Coordination", big:`${f1(mr.mean)} <small>vs ${f1(ir.mean)} s</small>`, p:"MAPPO (centralised critic) does not beat IPPO on the regular net, even after retuning.", pill:"corroborates literature"},
+    {tag:"5 · Equity", big:`${f2(hmax.mean-hmin.mean)} <small>s spread</small>`, p:`Under IDQN, ${V[hmax.vtype].toLowerCase()} lose ${f2(hmax.mean)} s per trip and ${V[hmin.vtype].toLowerCase()} lose ${f2(hmin.mean)} s. The baselines are close to uniform.`, pill:"headline finding"},
+  ];
+  document.getElementById("findings").innerHTML = cards.map(c=>`<div class="finding"><div class="tag">${c.tag}</div><div class="big">${c.big}</div><p>${c.p}</p><span class="pill">${c.pill}</span></div>`).join("");
+})();
+
+/* ---------- corridor ---------- */
+const NETLAB = {regular:"Regular", irregular:"Irregular", irregular2:"Irregular 2", irregular3:"Irregular 3"};
+const CORDER = ["green_wave","idqn","max_pressure"];
+panel("p-nets", {
+  title:"Delay by network layout", sub:"Corridor peak demand, min green 10 s",
+  legend: CORDER.map(k=>({label:CTRL[k].label, c:CTRL[k].c})),
+  draw: h => barChart(h, {yTitle:"s lost per trip", groups:["regular","irregular","irregular2","irregular3"].map(n=>({
+    label:NETLAB[n], bars:CORDER.map(k=>{const r=D.nets.find(q=>q.net===n&&q.controller===k); return {label:CTRL[k].label, color:CTRL[k].c, mean:r.mean, sd:r.sd, n:r.n};})}))}),
+  table: () => ({cols:[{l:"Network"},{l:"Controller"},{l:"Mean (s)",n:1},{l:"SD",n:1},{l:"Seeds",n:1}],
+    rows: D.nets.map(r=>[NETLAB[r.net], CTRL[r.controller].label, f2(r.mean), f2(r.sd), r.n])}),
+  note:"Error bars show ±1 SD. <b>Irregular</b> is the n=10 confirmation. Variants 2 and 3 replicate it at lower n.",
+});
+const PORDER = ["green_wave","idqn","ippo","max_pressure"];
+panel("p-peak", {
+  title:"All corridor controllers", sub:"Regular net, min green 10 s",
+  selector:{label:"Demand", value:"peak", options:[{v:"peak",l:"Peak"},{v:"tidal",l:"Tidal"}]},
+  draw: (h, s) => barChart(h, {yTitle:"s lost per trip", groups: PORDER.filter(k=>D[s].some(r=>r.controller===k)).map(k=>{
+    const r = D[s].find(q=>q.controller===k); return {label:CTRL[k].label, bars:[{label:"delay", color:CTRL[k].c, mean:r.mean, sd:r.sd, n:r.n}]};})}),
+  table: s => ({cols:[{l:"Controller"},{l:"Mean (s)",n:1},{l:"SD",n:1},{l:"Seeds",n:1}], rows: D[s].map(r=>[CTRL[r.controller].label, f2(r.mean), f2(r.sd), r.n])}),
+  note:"IDQN was only trained and evaluated on peak demand, so the tidal view shows the other three controllers.",
+});
+panel("p-mingreen", {
+  title:"Classical controllers vs minimum green", sub:"Regular net, n=10 per point",
+  selector:{label:"Demand", value:"corridor_peak", options:[{v:"corridor_peak",l:"Peak"},{v:"corridor_tidal",l:"Tidal"}]},
+  legend: ["green_wave","max_pressure"].map(k=>({label:CTRL[k].label, c:CTRL[k].c, line:1})),
+  draw: (h, s) => lineChart(h, {xTitle:"Minimum green (s)", yTitle:"s lost per trip", series: ["green_wave","max_pressure"].map(k=>({
+    label:CTRL[k].label, c:CTRL[k].c, pts:D.mingreen.filter(r=>r.scenario===s&&r.controller===k).map(r=>({x:r.min_green, y:r.mean, sd:r.sd, n:r.n}))}))}),
+  table: s => ({cols:[{l:"Controller"},{l:"Min green (s)",n:1},{l:"Mean (s)",n:1},{l:"SD",n:1},{l:"Seeds",n:1}],
+    rows: D.mingreen.filter(r=>r.scenario===s).map(r=>[CTRL[r.controller].label, r.min_green, f2(r.mean), f2(r.sd), r.n])}),
+});
+
+/* ---------- geometry ---------- */
+function winBands(rows){
+  const xs = [...new Set(rows.map(r=>r.ratio))].sort((a,b)=>a-b);
+  const win = xs.map(x => { const g=rows.find(r=>r.ratio===x&&r.controller==="green_wave"), i=rows.find(r=>r.ratio===x&&r.controller==="idqn"); return i&&g&&i.mean<g.mean; });
+  const out = [];
+  xs.forEach((x,k) => { if (!win[k]) return;
+    const lo = k>0 && !win[k-1] ? (xs[k-1]+x)/2 : (k>0?xs[k-1]:x);
+    const hi = k<xs.length-1 && !win[k+1] ? (x+xs[k+1])/2 : (k<xs.length-1?xs[k+1]:x);
+    const last = out[out.length-1];
+    if (last && last[1] >= lo) last[1] = Math.max(last[1], hi); else out.push([lo,hi]);
+  });
+  return out;
+}
+panel("p-geo", {
+  title:"Delay vs block-length ratio r", sub:"Corridor peak, min green 10 s. Choose the total span.",
+  selector:{label:"Span", value:"400", options:["400","450","550","700"].map(v=>({v, l:`${v} m`}))},
+  legend: [...CORDER.map(k=>({label:CTRL[k].label, c:CTRL[k].c, line:1})), {label:"IDQN beats green wave", c:"--win"}],
+  draw: (h, s) => { const rows = D.geo[s]; lineChart(h, {xTitle:"Ratio r (first block ÷ span)", yTitle:"s lost per trip", xFmt:v=>v.toFixed(2), height:320,
+    shade: winBands(rows), series: CORDER.map(k=>({label:CTRL[k].label, c:CTRL[k].c, pts: rows.filter(r=>r.controller===k).map(r=>({x:r.ratio, y:r.mean, sd:r.sd, n:r.n}))}))}); },
+  table: s => { const rows = D.geo[s]; const xs=[...new Set(rows.map(r=>r.ratio))].sort((a,b)=>a-b);
+    const g = (x,k) => rows.find(r=>r.ratio===x&&r.controller===k);
+    return {cols:[{l:"r",n:1},{l:"Green wave",n:1},{l:"IDQN",n:1},{l:"Max-pressure",n:1},{l:"GW − IDQN",n:1}],
+      rows: xs.map(x => { const a=g(x,"green_wave"), b=g(x,"idqn"), c=g(x,"max_pressure"); const d=a&&b?a.mean-b.mean:null;
+        return [x.toFixed(2), a?f2(a.mean):"–", b?f2(b.mean):"–", c?f2(c.mean):"–", d==null?"–":`<span class="${d>0?'sig':''}">${d>0?"+":""}${f2(d)}</span>`]; })}; },
+  note:"On the 400 m span, r&lt;0.50 comes from the SP13e sweep (the short block comes first) and r≥0.50 from SP13. A positive GW − IDQN means IDQN is faster. Bands are drawn between sampled ratios, so their edges are approximate.",
+});
+
+/* ---------- lambda ---------- */
+function lamPanel(id, key, title, yTitle){
+  panel(id, {title, sub:"IDQN, corridor peak, n=3 per λ",
+    legend: Object.keys(GEOM).map(k=>({label:GEOM[k].label, c:GEOM[k].c, line:1, dash:GEOM[k].dash})),
+    draw: h => lineChart(h, {xTitle:"Safety weight λ", yTitle, xFmt:v=>v.toFixed(2), series: Object.keys(GEOM).map(g=>({
+      label:GEOM[g].label, c:GEOM[g].c, dash:GEOM[g].dash, pts:D[key].filter(r=>r.geometry===g).map(r=>({x:r.lam, y:r.mean, sd:r.sd, n:r.n}))}))}),
+    table: () => ({cols:[{l:"Geometry"},{l:"λ",n:1},{l:"Mean",n:1},{l:"SD",n:1},{l:"Seeds",n:1}],
+      rows: D[key].map(r=>[GEOM[r.geometry].label, r.lam.toFixed(2), f2(r.mean), f2(r.sd), r.n])}),
+  });
+}
+lamPanel("p-lamd", "lam_delay", "Delay vs λ", "s lost per trip");
+lamPanel("p-lams", "lam_safety", "Safety penalty vs λ", "safety penalty per trip");
+
+/* ---------- MAPPO ---------- */
+const MV = [["ippo","IPPO","--s4",1],["mappo","MAPPO","--s5",1],["mappo_lr_low","MAPPO, low LR","--s5",.7],["mappo_batch64","MAPPO, batch 64","--s5",.5],["mappo_wide512","MAPPO, wide 512","--s5",.32]];
+panel("p-mappo", {
+  title:"IPPO vs MAPPO variants", sub:"Corridor peak, single seed per bar",
+  legend: MV.map(v=>({label:v[1], c:v[2]})),
+  draw: h => barChart(h, {yTitle:"s lost per trip", groups:["regular","irregular"].map(g=>({label:GEOM[g].label, bars: MV.map(v=>{
+    const r = D.mappo.find(q=>q.variant===v[0]&&q.geometry===g); return {label:v[1], color:v[2], op:v[3], mean:r.delay_per_trip};})}))}),
+  table: () => ({cols:[{l:"Variant"},{l:"Geometry"},{l:"Delay (s)",n:1}], rows: D.mappo.map(r=>[MV.find(v=>v[0]===r.variant)[1], GEOM[r.geometry].label, f2(r.delay_per_trip)])}),
+  note:"MAPPO variants share one hue, and a lighter shade means a later retune variant. The legend order matches the bar order. These are smoke runs with one seed each, so there are no error bars.",
+});
+
+/* ---------- heterogeneity ---------- */
+const VT = [["moto","Motorcycles"],["auto","Auto-rickshaws"],["car","Cars"]];
+panel("p-het", {
+  title:"Time loss per trip by vehicle type", sub:"Corridor peak, regular net",
+  legend: CORDER.map(k=>({label:CTRL[k].label, c:CTRL[k].c})),
+  draw: h => barChart(h, {yTitle:"s lost per trip", groups: VT.map(([v,l])=>({label:l, bars: CORDER.map(k=>{
+    const r = D.het.find(q=>q.vtype===v&&q.controller===k); return {label:CTRL[k].label, color:CTRL[k].c, mean:r.mean, sd:r.std, n:r.n_seeds};})}))}),
+  table: () => ({cols:[{l:"Controller"},{l:"Motorcycles",n:1},{l:"Auto-rickshaws",n:1},{l:"Cars",n:1},{l:"Spread",n:1}],
+    rows: CORDER.map(k=>{ const v = VT.map(([t])=>D.het.find(q=>q.vtype===t&&q.controller===k).mean);
+      return [CTRL[k].label, ...v.map(f2), f2(Math.max(...v)-Math.min(...v))]; })}),
+});
+
+/* ---------- incident ---------- */
+panel("p-inc", {
+  title:"Delay inside the incident window", sub:"Corridor peak, n=3",
+  legend:[{label:"No incident", c:"--neutral"},{label:"Incident", c:"--s8"}],
+  draw: h => barChart(h, {yTitle:"s lost per trip (window)", groups: CORDER.map(k=>({label:CTRL[k].label, bars:[false,true].map(inc=>{
+    const r = D.incident.find(q=>q.controller===k&&q.incident===inc); return {label:inc?"Incident":"No incident", color:inc?"--s8":"--neutral", mean:r.mean, sd:r.sd, n:r.n};})}))}),
+  table: () => ({cols:[{l:"Controller"},{l:"Window, no incident",n:1},{l:"Window, incident",n:1},{l:"Whole episode, no incident",n:1},{l:"Whole episode, incident",n:1}],
+    rows: CORDER.map(k=>{ const g=(a,i)=>D[a].find(q=>q.controller===k&&q.incident===i).mean;
+      return [CTRL[k].label, f2(g("incident",false)), f2(g("incident",true)), f2(g("incident_whole",false)), f2(g("incident_whole",true))]; })}),
+});
+panel("p-inc10", {
+  title:"Extra delay caused by the incident", sub:"Whole episode, classical controllers, n=10",
+  draw: h => barChart(h, {yTitle:"Δ s lost per trip", groups: D.incident10.map(r=>({label:CTRL[r.controller].label, bars:[{label:"Δ delay", color:CTRL[r.controller].c, mean:r.mean, sd:r.sd, n:r.n}]}))}),
+  table: () => ({cols:[{l:"Controller"},{l:"Mean Δ (s)",n:1},{l:"SD",n:1},{l:"Seeds",n:1}], rows: D.incident10.map(r=>[CTRL[r.controller].label, f2(r.mean), f2(r.sd), r.n])}),
+});
+
+/* ---------- isolated ---------- */
+const ALG = {fixedtime:"Fixed-time", dqn:"DQN", qrdqn:"QR-DQN", ppo:"PPO", a2c:"A2C"};
+panel("p-stage1", {
+  title:"Stage 1: mean waiting time", sub:"Single intersection, λ=0.5",
+  selector:{label:"Demand", value:"peak", options:[{v:"peak",l:"Peak"},{v:"offpeak",l:"Off-peak"}]},
+  legend:[{label:"Fixed-time baseline", c:"--neutral"},{label:"RL agent", c:"--s7"}],
+  draw: (h, s) => barChart(h, {yTitle:"mean waiting time (s)", groups: D.stage1.filter(r=>r.scenario===s).sort((a,b)=>a.mean-b.mean).map(r=>({
+    label:ALG[r.algo], bars:[{label:"waiting", color:r.algo==="fixedtime"?"--neutral":"--s7", mean:r.mean, sd:r.sd, n:r.n}]}))}),
+  table: s => ({cols:[{l:"Algorithm"},{l:"Mean waiting (s)",n:1},{l:"SD",n:1},{l:"Runs",n:1}],
+    rows: D.stage1.filter(r=>r.scenario===s).sort((a,b)=>a.mean-b.mean).map(r=>[ALG[r.algo], f2(r.mean), f2(r.sd), r.n])}),
+  note:"Sorted from best to worst. Fixed-time is a single deterministic run, so it has no error bar.",
+});
+panel("p-static", {
+  title:"Why RL loses: timing sweeps", sub:"Single intersection, n=5 per point",
+  selector:{label:"Controller", value:"static", options:[{v:"static",l:"Static plan"},{v:"actuated",l:"Actuated"}]},
+  legend:[{label:"Mean trip delay", c:"--s7", line:1}],
+  draw: (h, s) => lineChart(h, {xTitle: s==="static" ? "Green duration (s)" : "Minimum green (s)", yTitle:"mean trip delay (s)", series:[{
+    label:"Delay", c:"--s7", pts: D[s].map(r=>({x:r.green??r.min_green, y:r.mean, sd:r.sd, n:r.n}))}]}),
+  table: s => ({cols:[{l: s==="static"?"Green (s)":"Min green (s)",n:1},{l:"Mean delay (s)",n:1},{l:"SD",n:1},{l:"Seeds",n:1}],
+    rows: D[s].map(r=>[r.green??r.min_green, f2(r.mean), f2(r.sd), r.n])}),
+  note:"Short greens spend most of each cycle in amber, so delay explodes. Delay bottoms out at about 60–75 s for both the static and the actuated controller. RL agents on a short min green inherit this penalty.",
+});
+
+/* ---------- stats table ---------- */
+document.getElementById("t-stats").innerHTML = tableHTML(
+  [{l:"Comparison",wrap:1},{l:"n",n:1},{l:"Mean Δ (s)",n:1},{l:"SD",n:1},{l:"95% CI",n:1},{l:"p",n:1},{l:"Min possible p",n:1}],
+  D.stats.map(r=>[esc(r.label), r.n, `${r.mean>0?"+":""}${f2(r.mean)}`, f2(r.sd),
+    r.ci_lo!=null?`[${f2(r.ci_lo)}, ${f2(r.ci_hi)}]`:"–",
+    r.p!=null?`<span class="${r.p<0.05?'sig':''}">${r.p.toFixed(4)}</span>`:"–", r.min_p!=null?r.min_p.toFixed(4):"–"]));
+
+/* ---------- comparison table ---------- */
+const CL = {...CTRL, green_wave:{label:"Green wave"}};
+document.getElementById("t-cmp").innerHTML = tableHTML(
+  [{l:"Scenario"},{l:"Controller"},{l:"Runs",n:1},{l:"Time loss / trip (s)",n:1},{l:"± SD",n:1},{l:"Sys. waiting (s)",n:1},{l:"Sys. speed (m/s)",n:1},{l:"Safety penalty",n:1}],
+  D.comparison.map(r=>[r.scenario.replace("corridor_","corridor · "), (CL[r.algo]||{label:r.algo}).label, r.n_runs,
+    f2(r.trip_time_loss_mean_mean), f2(r.trip_time_loss_mean_std), f2(r.system_mean_waiting_time_mean), f2(r.system_mean_speed_mean), f2(r.system_safety_total_mean)]));
+
+/* ---------- figures ---------- */
+document.getElementById("figs").innerHTML = D.figs.map(f=>`<figure><img src="${f.src}" alt="${esc(f.cap)}" loading="lazy"><figcaption>${esc(f.cap)} · <code>${esc(f.path)}</code></figcaption></figure>`).join("");
+</script>
